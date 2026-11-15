@@ -54,4 +54,5 @@ plugins = ["pydantic.mypy"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 norecursedirs = ["tests/fixtures"]
-addopts = "-q"
+addopts = "-q -m 'not integration'"
+markers = ["integration: runs real external tools (osv-scanner) and needs network"]

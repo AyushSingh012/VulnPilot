@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, NoReturn
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
 from vulnpilot import __version__, doctor
-from vulnpilot.config import ConfigError, load_config
-from vulnpilot.models import ExitCode
+from vulnpilot.config import Config, ConfigError, load_config
+from vulnpilot.detect import DetectError
+from vulnpilot.models import ExitCode, Severity
+from vulnpilot.report.console import render_scan
+from vulnpilot.report.json_out import write_scan_json
+from vulnpilot.scanner import run_scan
+from vulnpilot.sources.base import SourceError
 
 app = typer.Typer(
     name="vulnpilot",
@@ -80,17 +85,38 @@ def doctor_cmd() -> None:
         raise typer.Exit(ExitCode.ERROR)
 
 
-def _load_config_or_exit(path: Path) -> None:
+def _fail(message: str) -> NoReturn:
+    err_console.print(f"[red]Error:[/red] {message}")
+    raise typer.Exit(ExitCode.ERROR)
+
+
+def _load_config_or_exit(path: Path) -> Config:
     try:
-        load_config(path)
+        return load_config(path)
     except ConfigError as exc:
         err_console.print(f"[red]Config error:[/red] {exc}")
         raise typer.Exit(ExitCode.ERROR) from exc
 
 
-def _not_yet(what: str, stage: str) -> None:
-    err_console.print(f"[yellow]`vulnpilot {what}` is not built yet ({stage}).[/yellow]")
+def _not_yet(what: str, stage: str) -> NoReturn:
+    err_console.print(f"[yellow]`{what}` is not built yet ({stage}).[/yellow]")
     raise typer.Exit(ExitCode.ERROR)
+
+
+def parse_severity_option(value: str | None) -> set[Severity] | None:
+    if value is None:
+        return None
+    wanted: set[Severity] = set()
+    for part in value.split(","):
+        name = part.strip().upper()
+        if not name:
+            continue
+        try:
+            wanted.add(Severity(name))
+        except ValueError:
+            choices = ", ".join(s.value for s in Severity)
+            _fail(f"unknown severity '{part.strip()}'; use: {choices}")
+    return wanted or None
 
 
 @app.command("scan")
@@ -102,8 +128,22 @@ def scan_cmd(
     sarif_out: Annotated[Path | None, typer.Option("--sarif", help="Write a SARIF report.")] = None,
 ) -> None:
     """Collect, merge and prioritize findings. Changes nothing."""
-    _load_config_or_exit(path)
-    _not_yet("scan", "Stage 2")
+    cfg = _load_config_or_exit(path)
+    if imports or cfg.imports:
+        _not_yet("--import / imports:", "Stage 5")
+    if sarif_out is not None:
+        _not_yet("--sarif", "Stage 5")
+    only = parse_severity_option(severity)
+    try:
+        result = run_scan(path, cfg, only)
+    except (DetectError, SourceError) as exc:
+        _fail(str(exc))
+    render_scan(result, console)
+    if json_out is not None:
+        write_scan_json(result, json_out)
+        console.print(f"JSON report: {json_out}")
+    if result.shown:
+        raise typer.Exit(ExitCode.FINDINGS_REMAIN)
 
 
 @app.command("fix")
@@ -121,4 +161,4 @@ def fix_cmd(
 ) -> None:
     """Full loop in a temporary worktree, then open or update the one PR."""
     _load_config_or_exit(path)
-    _not_yet("fix", "Stages 3-4")
+    _not_yet("vulnpilot fix", "Stages 3-4")

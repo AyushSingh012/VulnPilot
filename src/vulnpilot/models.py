@@ -140,6 +140,8 @@ class Finding(_Model):
     fixed_versions: list[str] = Field(default_factory=list)
     in_lockfile: bool = True
     is_direct: bool = False
+    dev_only: bool = False
+    """Reached only through dependency groups (dev), not at runtime."""
     dependency_paths: list[list[str]] = Field(default_factory=list)
     """Each path: app -> parent -> vulnerable package."""
     severity: Severity = Severity.UNKNOWN
