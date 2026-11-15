@@ -33,9 +33,20 @@ def make_fixture_repo(name: str, dest: Path) -> Path:
         )
 
     git("init", "-q", "-b", "main")
+    # VulnPilot commits in this repo too; give it a local identity of its own.
+    git("config", "user.name", "fixture")
+    git("config", "user.email", "fixture@example.invalid")
     git("add", "-A")
     git("commit", "-q", "-m", f"fixture {name}")
     return dest
+
+
+def add_bare_origin(repo: Path, origin: Path) -> Path:
+    """Give ``repo`` a local bare ``origin`` with ``main`` pushed, like a GitHub remote."""
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(origin)], check=True)
+    for args in (["remote", "add", "origin", str(origin)], ["push", "-q", "origin", "main"]):
+        subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+    return origin
 
 
 if __name__ == "__main__":

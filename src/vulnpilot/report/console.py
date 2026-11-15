@@ -191,5 +191,28 @@ def render_fix(outcome: FixOutcome, console: Console) -> None:
     console.print(f"Test runs after the baseline: {outcome.test_runs}")
     if outcome.worktree_path:
         console.print(f"Worktree kept at {outcome.worktree_path}")
+    render_publish(outcome, console)
     console.print(f"[dim]Run folder: {outcome.run_dir}[/dim]")
-    console.print("[dim]Commit, push and PR come in Stage 4.[/dim]")
+
+
+def render_publish(outcome: FixOutcome, console: Console) -> None:
+    sha = (outcome.commit_sha or "")[:8]
+    pr = outcome.pr
+    if outcome.pr_action == "created" and pr:
+        console.print(f"[green]Opened PR #{pr.number}[/green]: {pr.url}")
+    elif outcome.pr_action == "updated" and pr:
+        console.print(f"[green]Updated PR #{pr.number}[/green] ({sha} pushed): {pr.url}")
+    elif outcome.pr_action == "unchanged" and pr:
+        console.print(
+            f"PR #{pr.number} already has these exact changes; description refreshed: {pr.url}"
+        )
+    elif outcome.pr_action == "local":
+        console.print(
+            f"--no-push: committed {sha} on local branch '{outcome.branch}'; nothing pushed."
+        )
+        console.print(f"PR title: {outcome.pr_title}")
+        console.print(f"PR body: {outcome.body_path}")
+    if outcome.pr_note:
+        console.print(f"[yellow]{outcome.pr_note}[/yellow]")
+    for warning in outcome.warnings:
+        console.print(f"[yellow]Warning: {warning}[/yellow]")

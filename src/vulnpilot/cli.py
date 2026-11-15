@@ -13,6 +13,8 @@ from vulnpilot import __version__, doctor
 from vulnpilot.config import Config, ConfigError, load_config
 from vulnpilot.detect import DetectError
 from vulnpilot.fixers.base import LockError
+from vulnpilot.git_ops import GitError
+from vulnpilot.github import GitHubError
 from vulnpilot.models import ExitCode, Severity
 from vulnpilot.report.console import render_fix, render_scan
 from vulnpilot.report.json_out import write_scan_json
@@ -66,9 +68,10 @@ def main(
 
 
 @app.command("doctor")
-def doctor_cmd() -> None:
+def doctor_cmd(path: PathArg = Path()) -> None:
     """Check that osv-scanner, uv, poetry, git and gh are installed and gh is logged in."""
-    results = doctor.run_checks()
+    cfg = _load_config_or_exit(path)
+    results = doctor.run_checks(gh_user=cfg.pr.gh_user)
     table = Table(title="vulnpilot doctor", show_lines=False)
     table.add_column("Tool")
     table.add_column("Status")
@@ -171,8 +174,18 @@ def fix_cmd(
         _not_yet("--import / imports:", "Stage 5")
     only = parse_severity_option(severity)
     try:
-        outcome = run_fix(path, cfg, only, dry_run=dry_run, keep_worktree=keep_worktree)
-    except (DetectError, SourceError, WorktreeError, FixError, LockError) as exc:
+        outcome = run_fix(
+            path, cfg, only, dry_run=dry_run, push_pr=not no_push, keep_worktree=keep_worktree
+        )
+    except (
+        DetectError,
+        SourceError,
+        WorktreeError,
+        FixError,
+        LockError,
+        GitError,
+        GitHubError,
+    ) as exc:
         _fail(str(exc))
     render_fix(outcome, console)
     raise typer.Exit(outcome.exit_code)

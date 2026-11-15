@@ -1,7 +1,8 @@
 """The `fix` pipeline.
 
-detect -> worktree -> scan -> plan -> resolve -> baseline test -> apply + test + isolate
-breakers -> changed-files check -> rescan -> classify. (Commit / push / PR: Stage 4.)
+detect -> worktree -> PR-branch check -> scan -> plan -> resolve -> baseline test ->
+apply + test + isolate breakers -> changed-files check -> rescan -> classify ->
+commit -> push -> open or update the PR (or, with --no-push, a local branch + body file).
 """
 
 from __future__ import annotations
@@ -15,10 +16,32 @@ from vulnpilot.config import Config
 from vulnpilot.detect import detect_project
 from vulnpilot.fixers.base import LockError
 from vulnpilot.fixers.uv_fix import UvFixer
+from vulnpilot.git_ops import (
+    TRAILER,
+    BranchState,
+    GitError,
+    branch_state,
+    commit,
+    foreign_error,
+    has_remote,
+    push,
+    repo_slug,
+    same_change,
+    set_local_branch,
+)
+from vulnpilot.github import GhCli, GitHubError, PRHost, PullRequest
 from vulnpilot.isolate import isolate_breakers
 from vulnpilot.lockgraph import load_graph
-from vulnpilot.models import ExitCode, RunReport, Severity, Upgrade, ValidationResult
+from vulnpilot.models import (
+    ExitCode,
+    FixStatus,
+    RunReport,
+    Severity,
+    Upgrade,
+    ValidationResult,
+)
 from vulnpilot.plan import Plan, build_plan
+from vulnpilot.pr_body import BodyInput, render
 from vulnpilot.pypi import PyPIIndex, ReleaseIndex
 from vulnpilot.scanner import ScanResult, cache_dir, new_run_id, scan_project
 from vulnpilot.validate import Validator, tool_env
@@ -46,6 +69,15 @@ class FixOutcome:
     test_runs: int = 0
     dry_run: bool = False
     display_name: str = ""
+    branch: str = ""
+    pr_action: str = "none"
+    """created | updated | unchanged | local | none"""
+    pr: PullRequest | None = None
+    pr_note: str = ""
+    commit_sha: str | None = None
+    pr_title: str = ""
+    body_path: Path | None = None
+    warnings: list[str] = field(default_factory=list)
 
 
 def _priority(scan: ScanResult) -> dict[str, int]:
@@ -62,10 +94,16 @@ def run_fix(
     only: set[Severity] | None = None,
     *,
     dry_run: bool = False,
+    push_pr: bool = True,
     keep_worktree: bool = False,
+    host: PRHost | None = None,
     index: ReleaseIndex | None = None,
     today: date | None = None,
 ) -> FixOutcome:
+    """Run the loop; then commit and open or update the PR (``push_pr``) or a local branch.
+
+    ``host`` is where the PR lives; by default gh on the repo behind ``origin``.
+    """
     origin = detect_project(path, base_branch=cfg.pr.base_branch)
     if origin.manager != "uv":
         raise FixError("fixing Poetry projects is not built yet (Stage 6); `scan` works")
@@ -75,6 +113,9 @@ def run_fix(
     started = datetime.now(UTC)
 
     with worktree(origin.root, cfg.pr.base_branch, run_dir / "worktree", keep_worktree) as wt:
+        state: BranchState | None = None
+        if not dry_run:
+            host, state = _preflight(wt, cfg, push_pr, host)
         outcome = _fix_in_worktree(
             wt, cfg, only, run_id, run_dir, env, started, dry_run, index, today
         )
@@ -82,7 +123,104 @@ def run_fix(
         outcome.ref = wt.ref
         outcome.run_dir = run_dir
         outcome.display_name = wt.project_rel or origin.root.name
+        outcome.branch = cfg.pr.branch
+        if state is not None:
+            _publish(outcome, wt, cfg, state, host if push_pr else None)
         return outcome
+
+
+def _preflight(
+    wt: Worktree, cfg: Config, push_pr: bool, host: PRHost | None
+) -> tuple[PRHost | None, BranchState]:
+    """Before any slow work: can we push, and is the PR branch ours to rebuild?"""
+    branch = cfg.pr.branch
+    if not push_pr:
+        state = branch_state(wt.repo_root, branch, wt.commit_sha, remote=False)
+        if state.foreign:
+            raise foreign_error(state, "local")
+        return None, state
+    if not has_remote(wt.repo_root):
+        raise GitError("the repo has no 'origin' remote to push to; use --no-push")
+    if host is None:
+        gh = GhCli(cfg.pr.repo or repo_slug(wt.repo_root), cfg.pr.gh_user)
+        gh.check_access()
+        host = gh
+    state = branch_state(wt.repo_root, branch, wt.commit_sha, remote=True, env=host.push_env())
+    if state.foreign:
+        raise foreign_error(state, "origin")
+    return host, state
+
+
+def _commit_message(outcome: FixOutcome, report: RunReport, title: str) -> str:
+    by_key = {f.key: f for f in report.findings_before}
+    lines = [title, ""]
+    for u in outcome.kept:
+        ids = [
+            by_key[r.finding_key].advisory_id
+            for r in report.results
+            if r.status.counts_as_fixed and r.upgrade and r.upgrade.package == u.package
+        ]
+        if ids:
+            lines.append(f"- {u.package} {u.from_version} -> {u.to_version}: {', '.join(ids)}")
+    return "\n".join([*lines, "", f"{TRAILER}: {report.run_id}"])
+
+
+def _publish(
+    outcome: FixOutcome, wt: Worktree, cfg: Config, state: BranchState, host: PRHost | None
+) -> None:
+    """Commit the kept upgrades, then push and open / update the PR (or a local branch)."""
+    report = outcome.report
+    if report is None or outcome.run_dir is None:
+        return
+    introduced = [r for r in report.results if r.status is FixStatus.INTRODUCED]
+    if introduced:
+        outcome.pr_note = (
+            f"No PR: the upgrades bring in {len(introduced)} new finding(s); see INTRODUCED above."
+        )
+        return
+    if not any(r.status.counts_as_fixed for r in report.results) or not outcome.changed:
+        outcome.pr_note = "No PR: nothing was fixed, so there is nothing to commit."
+        if host is not None and (pr := host.find_open(state.name)) is not None:
+            outcome.pr = pr
+            outcome.pr_note += f" The open VulnPilot PR #{pr.number} was left as is."
+        return
+
+    title, text = render(
+        BodyInput(report=report, base_ref=wt.ref, pyproject_changes=outcome.pyproject_changes)
+    )
+    body_path = outcome.run_dir / "pr-body.md"
+    body_path.write_text(text, "utf-8")
+    outcome.body_path = body_path
+    outcome.pr_title = title
+    sha = commit(wt.path, sorted(outcome.changed), _commit_message(outcome, report, title))
+    outcome.commit_sha = sha
+
+    if host is None:
+        set_local_branch(wt.repo_root, state.name, sha)
+        outcome.pr_action = "local"
+        return
+
+    if state.sha and same_change(wt.repo_root, state.sha, sha):
+        outcome.pr_action = "unchanged"
+        outcome.commit_sha = state.sha
+    else:
+        push(wt.repo_root, sha, state.name, state.sha, host.push_env())
+    pushed = "" if outcome.pr_action == "unchanged" else f"'{state.name}' was pushed, but "
+    try:
+        pr = host.find_open(state.name)
+        if pr is not None:
+            host.update(pr, title, body_path)
+            if outcome.pr_action != "unchanged":
+                outcome.pr_action = "updated"
+        else:
+            pr = host.create(cfg.pr.base_branch, state.name, title, body_path)
+            outcome.pr_action = "created"
+            outcome.warnings += host.decorate(pr, cfg.pr.labels, cfg.pr.reviewers)
+    except GitHubError as exc:
+        raise GitHubError(pushed + str(exc)) from exc
+    outcome.pr = pr
+    report.pr_url = pr.url
+    (outcome.run_dir / "report.json").write_text(report.model_dump_json(indent=2), "utf-8")
 
 
 def _fix_in_worktree(

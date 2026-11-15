@@ -26,6 +26,9 @@ def fake_runner(
             raise ToolNotFoundError(tool)
         if list(cmd) == ["gh", "auth", "status"]:
             return ProcResult(0 if gh_logged_in else 1, "", "secret-looking output")
+        if list(cmd[:3]) == ["gh", "auth", "token"]:
+            known = cmd[4] == "known-user"
+            return ProcResult(0 if known else 1, "token-must-not-leak\n" if known else "", "")
         return ProcResult(0, versions[tool], "")
 
     return run
@@ -84,3 +87,12 @@ def test_login_not_checked_when_gh_missing() -> None:
 )
 def test_parse_version(text: str, expected: str | None) -> None:
     assert doctor.parse_version(text) == expected
+
+
+def test_gh_user_login_is_checked_without_keeping_the_token() -> None:
+    ok = by_name(doctor.run_checks(fake_runner(GOOD), gh_user="known-user"))
+    assert ok["gh login (known-user)"].ok
+    assert "token-must-not-leak" not in repr(ok)
+    bad = doctor.run_checks(fake_runner(GOOD), gh_user="other")
+    assert not doctor.all_required_ok(bad)
+    assert "gh auth login" in by_name(bad)["gh login (other)"].detail

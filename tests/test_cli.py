@@ -25,7 +25,7 @@ def test_version() -> None:
 
 @pytest.mark.parametrize(("ok", "code"), [(True, ExitCode.OK), (False, ExitCode.ERROR)])
 def test_doctor_exit_code(monkeypatch: pytest.MonkeyPatch, ok: bool, code: ExitCode) -> None:
-    monkeypatch.setattr(doctor, "run_checks", lambda: checks(ok))
+    monkeypatch.setattr(doctor, "run_checks", lambda **_: checks(ok))
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code == code
     assert "osv-scanner" in result.output

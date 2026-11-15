@@ -121,11 +121,27 @@ def check_gh_login(run: Runner = _default_runner) -> CheckResult:
     return CheckResult("gh login", False, True, None, "not logged in; run: gh auth login")
 
 
-def run_checks(run: Runner = _default_runner) -> list[CheckResult]:
+def check_gh_user(user: str, run: Runner = _default_runner) -> CheckResult:
+    """``pr.gh_user`` has a gh login. Only the exit code is read; the token is discarded."""
+    name = f"gh login ({user})"
+    try:
+        result = run(("gh", "auth", "token", "--user", user))
+    except (ToolNotFoundError, ToolTimeoutError):
+        return CheckResult(name, False, True, None, "gh is not available")
+    if result.ok:
+        return CheckResult(name, True, True, None, "pr.gh_user can be used")
+    return CheckResult(
+        name, False, True, None, f"no login for {user}; run: gh auth login, then gh auth switch"
+    )
+
+
+def run_checks(run: Runner = _default_runner, gh_user: str | None = None) -> list[CheckResult]:
     results = [check_tool(spec, run) for spec in TOOLS]
     gh = next(r for r in results if r.name == "gh")
     if gh.ok:
         results.append(check_gh_login(run))
+        if gh_user:
+            results.append(check_gh_user(gh_user, run))
     return results
 
 

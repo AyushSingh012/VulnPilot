@@ -55,4 +55,7 @@ plugins = ["pydantic.mypy"]
 testpaths = ["tests"]
 norecursedirs = ["tests/fixtures"]
 addopts = "-q -m 'not integration'"
-markers = ["integration: runs real external tools (osv-scanner) and needs network"]
+markers = [
+    "integration: runs real external tools (osv-scanner) and needs network",
+    "github: opens real PRs on a sandbox GitHub repo (see tests/test_github_live.py)",
+]

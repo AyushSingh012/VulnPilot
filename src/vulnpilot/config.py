@@ -65,6 +65,11 @@ class PRConfig(_Strict):
     branch: str = "vulnpilot/security-fixes"
     reviewers: list[str] = Field(default_factory=list)
     labels: list[str] = Field(default_factory=lambda: ["security", "dependencies"])
+    gh_user: str | None = None
+    """gh account to open the PR with (its token is used for VulnPilot's commands only).
+    None = the account active in gh."""
+    repo: str | None = Field(default=None, pattern=r"^[\w.-]+/[\w.-]+$")
+    """GitHub ``owner/name``; None = read it from the ``origin`` remote."""
 
 
 class Config(_Strict):

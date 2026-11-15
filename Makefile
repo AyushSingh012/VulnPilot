@@ -1,4 +1,4 @@
-.PHONY: check lint type test integration fixtures osv-data
+.PHONY: check lint type test integration github-test fixtures osv-data
 
 check: lint type test
 
@@ -13,7 +13,11 @@ test:
 	uv run pytest
 
 integration:
-	uv run pytest -m integration
+	uv run pytest -m 'integration and not github'
+
+# Needs VULNPILOT_SANDBOX, VULNPILOT_SANDBOX_REMOTE and (optionally) VULNPILOT_GH_USER.
+github-test:
+	uv run pytest -m github -rs
 
 osv-data:
 	uv run python scripts/capture_osv.py
