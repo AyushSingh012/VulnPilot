@@ -133,3 +133,30 @@ def test_failed_test_names() -> None:
         "ERROR tests/t.py::test_b\nFAILED tests/t.py::test_a\n"
     )
     assert failed_test_names(out) == ["tests/t.py::test_a", "tests/t.py::test_b"]
+
+
+def test_rider_fixed_by_the_same_upgrade_counts_as_fixed() -> None:
+    high, medium = f("a", "CVE-1"), f("a", "CVE-2")
+    upgrade = Upgrade(
+        package="a", from_version="1", to_version="2", method="lock-upgrade",
+        finding_keys=[high.key, medium.key],
+    )  # fmt: skip
+    results = classify(
+        [high], [], [medium], Plan(upgrades=[upgrade]), [upgrade], {}, {}, [high, medium], [],
+        tests_ran=True, after_all=[],
+    )  # fmt: skip
+    by_key = {r.finding_key: r for r in results}
+    assert by_key[medium.key].status is FixStatus.FIXED_AND_VALIDATED
+    assert "same upgrade" in by_key[medium.key].note
+    unrelated = f("b", "CVE-3")
+    results = classify(
+        [], [], [unrelated], Plan(), [], {}, {}, [unrelated], [], tests_ran=True, after_all=[]
+    )
+    assert results[0].status is FixStatus.SKIPPED
+
+
+def test_image_finding_already_fixed_in_the_lockfile() -> None:
+    img = f("a", "CVE-1", version="2.0")
+    img.fixed_in_source = True
+    [r] = classify([img], [], [], Plan(), [], {}, {}, [img], [], tests_ran=True)
+    assert r.status is FixStatus.FIXED_IN_SOURCE and "rebuild the image" in r.note

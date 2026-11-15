@@ -156,6 +156,8 @@ class Finding(_Model):
     affected_ranges: list[VersionRange] = Field(default_factory=list)
     """Where the advisory applies; used to test whether a candidate version is still affected."""
     in_lockfile: bool = True
+    fixed_in_source: bool = False
+    """Reported by an image import, but the lockfile already holds a fixed version."""
     is_direct: bool = False
     dev_only: bool = False
     """Reached only through dependency groups (dev), not at runtime."""

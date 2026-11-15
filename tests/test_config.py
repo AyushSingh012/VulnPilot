@@ -15,7 +15,7 @@ def write(tmp_path: Path, text: str) -> Path:
 def test_defaults_when_file_missing(tmp_path: Path) -> None:
     cfg = load_config(tmp_path)
     assert cfg == Config()
-    assert cfg.threshold is Severity.LOW
+    assert cfg.threshold is Severity.HIGH
     assert cfg.allow_major_upgrades is False
     assert cfg.pr.branch == "vulnpilot/security-fixes"
     assert cfg.validation.install_command("uv") == "uv sync --frozen"

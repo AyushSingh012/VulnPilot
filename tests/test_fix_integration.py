@@ -38,10 +38,10 @@ def test_fix_matches_expected(d: Path, tmp_path: Path) -> None:
 
     if expected["exit_code"] == ExitCode.ERROR:
         with pytest.raises(FixError, match=expected["error_contains"]):
-            run_fix(repo, Config(), push_pr=False)
+            run_fix(repo, Config(severity_threshold="LOW"), push_pr=False)
         return
 
-    outcome = run_fix(repo, Config(), push_pr=False)
+    outcome = run_fix(repo, Config(severity_threshold="LOW"), push_pr=False)
     assert outcome.report is not None
     assert outcome.exit_code == expected["exit_code"]
     assert sorted(outcome.changed) == sorted(expected["changed_files"])

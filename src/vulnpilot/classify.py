@@ -38,8 +38,15 @@ def classify(
     before_all: list[Finding],
     after_shown: list[Finding],
     tests_ran: bool,
+    *,
+    after_all: list[Finding] | None = None,
 ) -> list[FixResult]:
+    """``after_*`` must already exclude findings the lockfile now fixes (fixed_in_source)."""
     results: list[FixResult] = []
+    planned = {u.package: u for u in plan.upgrades}
+    applied = {u.package: u for u in kept}
+    fixed_status = FixStatus.FIXED_AND_VALIDATED if tests_ran else FixStatus.FIXED_NOT_TESTED
+    after_everything = after_all if after_all is not None else after_shown
     for f, rule in ignored:
         results.append(
             FixResult(
@@ -49,17 +56,33 @@ def classify(
             )
         )
     for f in below_threshold:
-        results.append(
-            FixResult(finding_key=f.key, status=FixStatus.SKIPPED, note="below severity threshold")
-        )
+        up = applied.get(normalize_package(f.package))
+        rode = up is not None and f.key in up.finding_keys
+        if rode and not any(same_issue(f, a) for a in after_everything):
+            results.append(
+                FixResult(
+                    finding_key=f.key,
+                    status=fixed_status,
+                    upgrade=up,
+                    note="below the threshold; fixed by the same upgrade",
+                )
+            )
+        else:
+            results.append(
+                FixResult(
+                    finding_key=f.key, status=FixStatus.SKIPPED, note="below severity threshold"
+                )
+            )
 
-    planned = {u.package: u for u in plan.upgrades}
-    applied = {u.package: u for u in kept}
-    fixed_status = FixStatus.FIXED_AND_VALIDATED if tests_ran else FixStatus.FIXED_NOT_TESTED
     for f in shown:
         pkg = normalize_package(f.package)
         upgrade = applied.get(pkg) or planned.get(pkg)
-        if not f.in_lockfile:
+        if f.fixed_in_source:
+            status, note = (
+                FixStatus.FIXED_IN_SOURCE,
+                f"the lockfile already has {f.installed_version}; rebuild the image",
+            )
+        elif not f.in_lockfile:
             status, note = FixStatus.OUT_OF_SCOPE, "needs a base-image or Dockerfile change"
         elif f.key in plan.no_fix:
             status, note = FixStatus.NO_SAFE_FIX, plan.no_fix[f.key]

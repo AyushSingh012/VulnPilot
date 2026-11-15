@@ -86,7 +86,7 @@ def remote_sha(repo: Path) -> str:
 
 def test_two_runs_give_one_pr_and_a_moved_base_rebuilds_it(repo: Path) -> None:
     host = FakeHost()
-    first = run_fix(repo, Config(), host=host)
+    first = run_fix(repo, Config(severity_threshold="LOW"), host=host)
     assert first.pr_action == "created" and first.pr and first.pr.number == 1
     sha1 = remote_sha(repo)
     assert sha1 == first.commit_sha
@@ -95,7 +95,7 @@ def test_two_runs_give_one_pr_and_a_moved_base_rebuilds_it(repo: Path) -> None:
     body = str(host.prs[1]["body"])
     assert body.startswith(MARKER) and "## Fixed" in body
 
-    second = run_fix(repo, Config(), host=host)
+    second = run_fix(repo, Config(severity_threshold="LOW"), host=host)
     assert second.pr_action == "unchanged" and remote_sha(repo) == sha1
     assert host.events == ["create #1", "update #1"]
 
@@ -103,18 +103,18 @@ def test_two_runs_give_one_pr_and_a_moved_base_rebuilds_it(repo: Path) -> None:
     git(repo, "add", "NOTES.md")
     git(repo, "commit", "-q", "-m", "base moves on")
     git(repo, "push", "-q", "origin", "main")
-    third = run_fix(repo, Config(), host=host)
+    third = run_fix(repo, Config(severity_threshold="LOW"), host=host)
     assert third.pr_action == "updated" and remote_sha(repo) != sha1
     assert git(repo, "rev-parse", f"{remote_sha(repo)}^") == git(repo, "rev-parse", "origin/main")
     assert host.events == ["create #1", "update #1", "update #1"] and len(host.prs) == 1
 
     host.prs[1]["open"] = False  # merged or closed: the next run opens a new PR
-    fourth = run_fix(repo, Config(), host=host)
+    fourth = run_fix(repo, Config(severity_threshold="LOW"), host=host)
     assert fourth.pr_action == "created" and fourth.pr and fourth.pr.number == 2
 
 
 def test_no_push_commits_locally_and_pushes_nothing(repo: Path) -> None:
-    outcome = run_fix(repo, Config(), push_pr=False)
+    outcome = run_fix(repo, Config(severity_threshold="LOW"), push_pr=False)
     assert outcome.pr_action == "local" and outcome.body_path and outcome.body_path.is_file()
     assert git(repo, "rev-parse", BRANCH) == outcome.commit_sha
     assert remote_sha(repo) == ""
@@ -132,5 +132,5 @@ def test_branch_with_human_commits_is_never_overwritten(repo: Path) -> None:
     before = remote_sha(repo)
     host = FakeHost()
     with pytest.raises(GitError, match="holds commits VulnPilot didn't make"):
-        run_fix(repo, Config(), host=host)
+        run_fix(repo, Config(severity_threshold="LOW"), host=host)
     assert remote_sha(repo) == before and host.events == []

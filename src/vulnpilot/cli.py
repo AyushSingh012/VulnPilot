@@ -47,7 +47,15 @@ ImportOpt = Annotated[
 ]
 SeverityOpt = Annotated[
     str | None,
-    typer.Option("--severity", help="Only these severities, e.g. HIGH,CRITICAL."),
+    typer.Option("--severity", help="Only these severities, e.g. MEDIUM,HIGH,CRITICAL."),
+]
+MinSeverityOpt = Annotated[
+    str | None,
+    typer.Option(
+        "--min-severity",
+        help="Lowest severity to include (LOW, MEDIUM, HIGH, CRITICAL). "
+        "Overrides severity_threshold in vulnpilot.yml; the default is HIGH.",
+    ),
 ]
 
 
@@ -109,6 +117,18 @@ def _not_yet(what: str, stage: str) -> NoReturn:
     raise typer.Exit(ExitCode.ERROR)
 
 
+_THRESHOLDS = ("LOW", "MEDIUM", "HIGH", "CRITICAL")
+
+
+def with_min_severity(cfg: Config, value: str | None) -> Config:
+    if value is None:
+        return cfg
+    name = value.strip().upper()
+    if name not in _THRESHOLDS:
+        _fail(f"unknown --min-severity '{value}'; use: {', '.join(_THRESHOLDS)}")
+    return cfg.model_copy(update={"severity_threshold": name})
+
+
 def parse_severity_option(value: str | None) -> set[Severity] | None:
     if value is None:
         return None
@@ -130,11 +150,12 @@ def scan_cmd(
     path: PathArg = Path(),
     imports: ImportOpt = None,
     severity: SeverityOpt = None,
+    min_severity: MinSeverityOpt = None,
     json_out: Annotated[Path | None, typer.Option("--json", help="Write a JSON report.")] = None,
     sarif_out: Annotated[Path | None, typer.Option("--sarif", help="Write a SARIF report.")] = None,
 ) -> None:
     """Collect, merge and prioritize findings. Changes nothing."""
-    cfg = _load_config_or_exit(path)
+    cfg = with_min_severity(_load_config_or_exit(path), min_severity)
     if imports or cfg.imports:
         _not_yet("--import / imports:", "Stage 5")
     if sarif_out is not None:
@@ -157,6 +178,7 @@ def fix_cmd(
     path: PathArg = Path(),
     imports: ImportOpt = None,
     severity: SeverityOpt = None,
+    min_severity: MinSeverityOpt = None,
     dry_run: Annotated[
         bool, typer.Option("--dry-run", help="Show planned upgrades; change nothing.")
     ] = False,
@@ -169,7 +191,7 @@ def fix_cmd(
     ] = False,
 ) -> None:
     """Full loop in a temporary worktree, then open or update the one PR."""
-    cfg = _load_config_or_exit(path)
+    cfg = with_min_severity(_load_config_or_exit(path), min_severity)
     if imports or cfg.imports:
         _not_yet("--import / imports:", "Stage 5")
     only = parse_severity_option(severity)

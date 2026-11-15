@@ -21,7 +21,7 @@ pytestmark = [
 
 @pytest.mark.parametrize("d", UV_FIXTURES, ids=lambda d: d.name)
 def test_live_scan_finds_expected(d: Path) -> None:
-    result = run_scan(d, Config(), today=date.today())
+    result = run_scan(d, Config(severity_threshold="LOW"), today=date.today())
     for exp in fixture_spec(d)["expected"]["scan"]:
         assert any(
             f.package == exp["package"] and exp["advisory"] in f.aliases for f in result.findings

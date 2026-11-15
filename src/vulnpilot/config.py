@@ -74,7 +74,9 @@ class PRConfig(_Strict):
 
 class Config(_Strict):
     imports: list[Path] = Field(default_factory=list)
-    severity_threshold: Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"] = "LOW"
+    severity_threshold: Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"] = "HIGH"
+    """Fix findings at or above this. Unrated findings count as HIGH; KEV-listed or likely
+    exploited (EPSS) findings are always included."""
     allow_major_upgrades: bool = False
     # "validate" would shadow BaseModel.validate, so the attribute has another name.
     validation: ValidateConfig = Field(default_factory=ValidateConfig, alias="validate")

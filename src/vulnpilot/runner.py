@@ -246,6 +246,7 @@ def _fix_in_worktree(
         project.lockfile,
         index or PyPIIndex(),
         cfg.allow_major_upgrades,
+        extras=before.below_threshold,
     )
     rank = _priority(before)
     plan.upgrades.sort(key=lambda u: (-rank.get(u.package, 0), u.package))
@@ -310,6 +311,9 @@ def _fix_in_worktree(
     outcome.changed = changed
 
     after = scan_project(project, cfg, run_id, run_dir / "raw-after", only, today=today)
+    # An import finding whose lockfile version is now fixed is gone, as far as the PR goes.
+    present = [f for f in after.findings if not f.fixed_in_source]
+    present_keys = {f.key for f in present}
     results = classify(
         before.shown,
         before.ignored,
@@ -319,8 +323,9 @@ def _fix_in_worktree(
         breakers,
         blocked,
         before.findings,
-        after.shown,
+        [f for f in after.shown if f.key in present_keys],
         tests_ran=validator.tests_enabled,
+        after_all=present,
     )
     outcome.report = RunReport(
         run_id=run_id,

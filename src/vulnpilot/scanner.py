@@ -47,6 +47,20 @@ def sort_key(f: Finding) -> tuple[int, str, float, str]:
     return (-f.severity.rank, f.package, -(f.cvss or 0.0), f.advisory_id)
 
 
+EPSS_LIKELY = 0.1
+"""EPSS probability at or above which a finding counts as likely to be exploited."""
+
+
+def gate_severity(f: Finding) -> Severity:
+    """Severity used for the threshold: an unrated finding counts as HIGH until rated."""
+    return Severity.HIGH if f.severity is Severity.UNKNOWN else f.severity
+
+
+def always_fix(f: Finding) -> bool:
+    """Known or likely exploitation outranks the severity threshold."""
+    return f.in_kev or (f.epss or 0.0) >= EPSS_LIKELY
+
+
 def _matching_rule(f: Finding, rules: list[IgnoreRule]) -> IgnoreRule | None:
     ids = set(f.aliases)
     return next((r for r in rules if r.id in ids), None)
@@ -65,8 +79,9 @@ def apply_filters(
         rule = _matching_rule(f, active)
         if rule is not None:
             result.ignored.append((f, rule))
-        elif (only is not None and f.severity not in only) or (
-            only is None and f.severity.rank < cfg.threshold.rank
+        elif not always_fix(f) and (
+            (only is not None and gate_severity(f) not in only)
+            or (only is None and gate_severity(f).rank < cfg.threshold.rank)
         ):
             result.below_threshold.append(f)
         else:

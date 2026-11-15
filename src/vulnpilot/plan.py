@@ -5,6 +5,9 @@ Rules (see the plan, step 6):
 - Otherwise pick the lowest version in the current major that fixes the most advisories
   (a partial fix); the rest are NO_SAFE_FIX ("needs a major upgrade").
 - If nothing fixes any of them, the package is NO_SAFE_FIX.
+- Ride-along: when a package is upgraded anyway, its below-threshold advisories are fixed
+  too if the target, or a later version in the same major, also fixes them. They never
+  change which in-scope advisories get fixed, and are never reported as NO_SAFE_FIX.
 """
 
 from __future__ import annotations
@@ -94,6 +97,26 @@ def choose_target(
     return target, fixed, reasons
 
 
+def ride_along(
+    target: str, fixed: list[Finding], extras: list[Finding], cands: list[str]
+) -> tuple[str, list[Finding]]:
+    """A target in the same major that also fixes extras, without losing any fixed finding.
+
+    Prefers the lowest version that fixes every extra; else keeps ``target`` and whichever
+    extras it already fixes.
+    """
+    if not extras:
+        return target, []
+    tv = parse(target)
+    same_major = [
+        c for c in cands if major(c) == major(target) and (p := parse(c)) and tv and p >= tv
+    ]
+    for c in same_major:
+        if all(not is_affected(c, f) for f in [*fixed, *extras]):
+            return c, extras
+    return target, [f for f in extras if not is_affected(target, f)]
+
+
 def build_plan(
     findings: list[Finding],
     graph: LockGraph,
@@ -101,20 +124,29 @@ def build_plan(
     lockfile: Path,
     index: ReleaseIndex,
     allow_major: bool,
+    extras: list[Finding] | None = None,
 ) -> Plan:
+    """Plan upgrades for ``findings``; ``extras`` (below the threshold) only ride along."""
     plan = Plan()
     from_registry = registry_packages(lockfile)
     groups: dict[tuple[str, str], list[Finding]] = defaultdict(list)
     for f in findings:
-        if f.in_lockfile:
+        if f.in_lockfile and not f.fixed_in_source:
             groups[(normalize_package(f.package), f.installed_version)].append(f)
+    riders: dict[tuple[str, str], list[Finding]] = defaultdict(list)
+    for f in extras or []:
+        key = (normalize_package(f.package), f.installed_version)
+        if f.in_lockfile and not f.fixed_in_source and key in groups:
+            riders[key].append(f)
 
     for (package, installed), items in sorted(groups.items()):
         if package not in from_registry:
             for f in items:
                 plan.no_fix[f.key] = "installed from a path, git or URL source, not an index"
             continue
-        cands, from_index = candidates(package, installed, items, index)
+        cands, from_index = candidates(
+            package, installed, [*items, *riders[(package, installed)]], index
+        )
         if not from_index:
             plan.warnings.append(
                 f"could not read {package}'s releases from the index; "
@@ -124,6 +156,7 @@ def build_plan(
         plan.no_fix.update(reasons)
         if target is None:
             continue
+        target, riding = ride_along(target, fixed, riders[(package, installed)], cands)
         is_direct = graph.is_direct(package)
         if is_direct and not allows(pyproject_text, package, target):
             method = "raise-bound"
@@ -135,7 +168,7 @@ def build_plan(
                 from_version=installed,
                 to_version=target,
                 method=method,
-                finding_keys=[f.key for f in fixed],
+                finding_keys=[f.key for f in [*fixed, *riding]],
                 unfixed_keys=list(reasons),
             )
         )

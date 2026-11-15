@@ -9,7 +9,7 @@ from tests.conftest import FIXTURES, UV_FIXTURES, fake_osv_runner, fixture_spec
 from vulnpilot import scanner
 from vulnpilot.cli import app
 from vulnpilot.config import Config, IgnoreRule
-from vulnpilot.models import ExitCode, Severity
+from vulnpilot.models import ExitCode, Finding, Project, Severity, finding_key
 from vulnpilot.scanner import run_scan
 
 cli = CliRunner()
@@ -20,7 +20,7 @@ def scan(
 ) -> scanner.ScanResult:
     return run_scan(
         FIXTURES / "uv" / name,
-        cfg or Config(),
+        cfg or Config(severity_threshold="LOW"),
         only,
         run=fake_osv_runner(name),
         today=date(2026, 11, 15),
@@ -123,3 +123,58 @@ def test_cli_scan_not_a_project(tmp_path: Path) -> None:
     result = cli.invoke(app, ["scan", str(tmp_path)])
     assert result.exit_code == ExitCode.ERROR
     assert "no pyproject.toml" in result.output
+
+
+def _result(*findings: Finding) -> scanner.ScanResult:
+    project = Project(root=Path(), manager="uv", lockfile=Path("uv.lock"))
+    return scanner.ScanResult(project, "r", Path(), list(findings))
+
+
+def _f(cve: str, severity: Severity, *, kev: bool = False, epss: float | None = None) -> Finding:
+    return Finding(
+        key=finding_key("PyPI", "demo", [cve]),
+        advisory_id=cve,
+        aliases=[cve],
+        ecosystem="PyPI",
+        package="demo",
+        installed_version="1.0",
+        severity=severity,
+        in_kev=kev,
+        epss=epss,
+    )
+
+
+def test_default_threshold_is_high_and_unrated_counts_as_high() -> None:
+    crit, high, med, unrated = (
+        _f("CVE-1", Severity.CRITICAL),
+        _f("CVE-2", Severity.HIGH),
+        _f("CVE-3", Severity.MEDIUM),
+        _f("CVE-4", Severity.UNKNOWN),
+    )
+    result = _result(crit, high, med, unrated)
+    scanner.apply_filters(result, Config())
+    assert [f.advisory_id for f in result.shown] == ["CVE-1", "CVE-2", "CVE-4"]
+    assert result.below_threshold == [med]
+    only = _result(med, unrated)
+    scanner.apply_filters(only, Config(), only={Severity.HIGH})
+    assert only.shown == [unrated]
+
+
+def test_known_or_likely_exploited_ignores_the_threshold() -> None:
+    kev = _f("CVE-1", Severity.LOW, kev=True)
+    likely = _f("CVE-2", Severity.MEDIUM, epss=0.42)
+    unlikely = _f("CVE-3", Severity.MEDIUM, epss=0.01)
+    result = _result(kev, likely, unlikely)
+    scanner.apply_filters(result, Config())
+    assert result.shown == [kev, likely] and result.below_threshold == [unlikely]
+
+
+def test_cli_min_severity_overrides_the_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_runner(monkeypatch, "transitive")
+    path = str(FIXTURES / "uv" / "transitive")
+    default = cli.invoke(app, ["scan", path])
+    lowered = cli.invoke(app, ["scan", path, "--min-severity", "medium"])
+    assert "below threshold" in default.output
+    assert "below threshold" not in lowered.output
+    bad = cli.invoke(app, ["scan", path, "--min-severity", "SEVERE"])
+    assert bad.exit_code == ExitCode.ERROR and "--min-severity" in bad.output

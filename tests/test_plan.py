@@ -4,7 +4,7 @@ from tests.conftest import FIXTURES, osv_data
 from vulnpilot.detect import detect_project
 from vulnpilot.lockgraph import load_graph
 from vulnpilot.models import Finding, VersionRange, finding_key
-from vulnpilot.plan import build_plan, candidates, choose_target
+from vulnpilot.plan import build_plan, candidates, choose_target, ride_along
 from vulnpilot.pypi import StaticIndex, usable_releases
 from vulnpilot.sources.merge import annotate, merge_findings
 from vulnpilot.sources.osv import parse_osv_json
@@ -113,3 +113,19 @@ def test_fixture_plans() -> None:
     _, plan = _fixture_plan("major-only", {"urllib3": ["1.26.20", "2.8.0"]})
     assert plan.upgrades == []  # type: ignore[attr-defined]
     assert all("major" in r for r in plan.no_fix.values())  # type: ignore[attr-defined]
+
+
+def test_ride_along_moves_up_within_the_major_only() -> None:
+    # A (high, fixed 1.4.2) is in scope; B (medium, fixed 1.5.0) rides along.
+    target, fixed, _ = choose_target("1.4.0", [A], RELEASES[1:], allow_major=False)
+    assert target == "1.4.2"
+    new_target, riding = ride_along(target, fixed, [B], RELEASES[1:])
+    assert (new_target, [f.advisory_id for f in riding]) == ("1.5.0", ["CVE-B"])
+    # C needs 2.x: it does not ride, and the in-scope target is unchanged.
+    assert ride_along(target, fixed, [C], RELEASES[1:]) == ("1.4.2", [])
+
+
+def test_riders_never_change_the_in_scope_fix() -> None:
+    _, fixed, _ = choose_target("1.4.0", [B], RELEASES[1:], allow_major=False)
+    target, riding = ride_along("1.5.0", fixed, [A, C], RELEASES[1:])
+    assert target == "1.5.0" and [f.advisory_id for f in riding] == ["CVE-A"]

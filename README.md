@@ -35,6 +35,23 @@ pr:
   labels: [security, dependencies]   # labels missing from the repo are skipped with a warning
 ```
 
+### Which vulnerabilities get fixed
+
+By default HIGH and CRITICAL. Also included:
+
+- findings with no severity rating (they count as HIGH until a source rates them);
+- findings on CISA's KEV list, or with an EPSS score of 0.1 or more, at any severity;
+- lower-severity advisories on a package that is being upgraded anyway, when a release in the
+  same major fixes them too.
+
+Everything else is listed in the PR under "Skipped". To include MEDIUM and LOW:
+
+```yaml
+severity_threshold: MEDIUM   # in vulnpilot.yml; LOW includes everything
+```
+
+or for one run: `vulnpilot fix --min-severity MEDIUM` (or an exact set: `--severity MEDIUM,HIGH`).
+
 `scan` changes nothing in the project. Raw scanner output is kept under
 `~/.cache/vulnpilot/runs/<run-id>/`.
 
