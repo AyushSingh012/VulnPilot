@@ -10,7 +10,7 @@ rescan, and nothing counts as tested without passing tests.
 You need Python 3.12+ and [uv](https://docs.astral.sh/uv/getting-started/installation/).
 
 ```sh
-uv tool install "git+https://github.com/AyushSingh012/VulnPilot@v0.1.0"
+uv tool install "git+https://github.com/AyushSingh012/VulnPilot@v0.1.1"
 vulnpilot --version
 ```
 
