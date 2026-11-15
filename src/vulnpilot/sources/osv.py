@@ -11,7 +11,15 @@ from packaging.version import InvalidVersion, Version
 
 from vulnpilot import proc
 from vulnpilot.doctor import parse_version
-from vulnpilot.models import Finding, Project, Severity, SourceHit, finding_key, normalize_package
+from vulnpilot.models import (
+    Finding,
+    Project,
+    Severity,
+    SourceHit,
+    VersionRange,
+    finding_key,
+    normalize_package,
+)
 from vulnpilot.proc import Runner, ToolNotFoundError, ToolTimeoutError
 from vulnpilot.sources.base import SourceError
 
@@ -48,8 +56,9 @@ def _version(text: str) -> Version | None:
         return None
 
 
-def _fixed_versions(vuln: dict[str, Any], package: str) -> set[str]:
-    fixed: set[str] = set()
+def _ranges(vuln: dict[str, Any], package: str) -> list[VersionRange]:
+    """OSV ECOSYSTEM events -> intervals. Events alternate introduced / fixed (or last_affected)."""
+    out: list[VersionRange] = []
     for affected in vuln.get("affected", []):
         pkg = affected.get("package", {})
         if pkg.get("ecosystem") != "PyPI" or normalize_package(pkg.get("name", "")) != package:
@@ -57,8 +66,34 @@ def _fixed_versions(vuln: dict[str, Any], package: str) -> set[str]:
         for rng in affected.get("ranges", []):
             if rng.get("type") != "ECOSYSTEM":
                 continue
-            fixed.update(e["fixed"] for e in rng.get("events", []) if "fixed" in e)
-    return fixed
+            current: VersionRange | None = None
+            for event in rng.get("events", []):
+                if "introduced" in event:
+                    if current is not None:
+                        out.append(current)
+                    current = VersionRange(introduced=event["introduced"])
+                elif "fixed" in event:
+                    out.append(
+                        (current or VersionRange()).model_copy(update={"fixed": event["fixed"]})
+                    )
+                    current = None
+                elif "last_affected" in event:
+                    out.append(
+                        (current or VersionRange()).model_copy(
+                            update={"last_affected": event["last_affected"]}
+                        )
+                    )
+                    current = None
+            if current is not None:
+                out.append(current)
+    return out
+
+
+def _dedupe(ranges: list[VersionRange]) -> list[VersionRange]:
+    seen: dict[tuple[str, str | None, str | None], VersionRange] = {}
+    for r in ranges:
+        seen.setdefault((r.introduced, r.fixed, r.last_affected), r)
+    return list(seen.values())
 
 
 def _sorted_versions(versions: Iterable[str]) -> list[str]:
@@ -112,9 +147,8 @@ def parse_osv_json(data: dict[str, Any], tool_version: str | None = None) -> lis
                     aliases.update(vuln.get("aliases", []))
                 if not aliases:
                     continue
-                fixed: set[str] = set()
-                for vuln in vulns:
-                    fixed |= _fixed_versions(vuln, name)
+                ranges = [r for vuln in vulns for r in _ranges(vuln, name)]
+                fixed = {r.fixed for r in ranges if r.fixed is not None}
                 relevant = [
                     f
                     for f in _sorted_versions(fixed)
@@ -141,6 +175,7 @@ def parse_osv_json(data: dict[str, Any], tool_version: str | None = None) -> lis
                         package=name,
                         installed_version=installed,
                         fixed_versions=relevant,
+                        affected_ranges=_dedupe(ranges),
                         in_lockfile=True,
                         severity=severity,
                         cvss=score,

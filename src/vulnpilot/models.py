@@ -74,7 +74,13 @@ class FixStatus(StrEnum):
 
 
 Manager = Literal["uv", "poetry"]
-UpgradeMethod = Literal["lock-upgrade", "raise-bound", "constraint", "poetry-update", "poetry-add"]
+UpgradeMethod = Literal[
+    "lock-upgrade",  # version already allowed: uv lock --upgrade-package pkg==ver
+    "raise-bound",  # direct dependency whose specifier blocks the fix: edit pyproject.toml
+    "parent-upgrade",  # transitive dependency blocked by its parent: upgrade the parent too
+    "poetry-update",
+    "poetry-add",
+]
 
 
 class _Model(BaseModel):
@@ -88,6 +94,14 @@ class Project(_Model):
     lockfile: Path
     commit_sha: str | None = None
     base_branch: str = "main"
+
+
+class VersionRange(_Model):
+    """One affected interval from an advisory: introduced <= v < fixed (or <= last_affected)."""
+
+    introduced: str = "0"
+    fixed: str | None = None
+    last_affected: str | None = None
 
 
 class SourceHit(_Model):
@@ -138,6 +152,9 @@ class Finding(_Model):
     installed_version: str
     """Version in the lockfile (or the image, if the package is not in the lockfile)."""
     fixed_versions: list[str] = Field(default_factory=list)
+    """Fixed versions above the installed one, lowest first."""
+    affected_ranges: list[VersionRange] = Field(default_factory=list)
+    """Where the advisory applies; used to test whether a candidate version is still affected."""
     in_lockfile: bool = True
     is_direct: bool = False
     dev_only: bool = False
@@ -162,6 +179,11 @@ class Upgrade(_Model):
     """Lowest non-yanked version that fixes all of this package's advisories."""
     method: UpgradeMethod
     finding_keys: list[str]
+    """The findings this upgrade is expected to fix."""
+    unfixed_keys: list[str] = Field(default_factory=list)
+    """Findings of this package that the target does not fix (partial fix within the major)."""
+    parents: list[str] = Field(default_factory=list)
+    """For parent-upgrade: the direct dependencies upgraded along with it."""
 
 
 class ValidationResult(_Model):

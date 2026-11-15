@@ -11,3 +11,6 @@ dev = ["pytest>=8"]
 
 [tool.uv.sources]
 capped-parent = { path = "capped_parent" }
+
+[tool.pytest.ini_options]
+addopts = "-p no:cacheprovider"

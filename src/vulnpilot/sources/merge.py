@@ -41,6 +41,14 @@ def _combine(items: list[Finding]) -> Finding:
             "advisory_id": preferred_id(aliases),
             "aliases": aliases,
             "fixed_versions": _sort_versions({v for f in items for v in f.fixed_versions}),
+            # A version counts as affected if any source says so (conservative).
+            "affected_ranges": list(
+                {
+                    (r.introduced, r.fixed, r.last_affected): r
+                    for f in items
+                    for r in f.affected_ranges
+                }.values()
+            ),
             "in_lockfile": any(f.in_lockfile for f in items),
             "severity": severity,
             "cvss": max(scores) if scores else None,

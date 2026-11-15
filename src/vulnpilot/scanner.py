@@ -82,7 +82,19 @@ def run_scan(
 ) -> ScanResult:
     project = detect_project(path, base_branch=cfg.pr.base_branch)
     run_id = new_run_id()
-    raw_dir = cache_dir() / "runs" / run_id
+    return scan_project(project, cfg, run_id, cache_dir() / "runs" / run_id, only, run, today)
+
+
+def scan_project(
+    project: Project,
+    cfg: Config,
+    run_id: str,
+    raw_dir: Path,
+    only: set[Severity] | None = None,
+    run: Runner | None = None,
+    today: date | None = None,
+) -> ScanResult:
+    """Collect, merge, annotate and filter findings for an already-detected project."""
     osv = OsvSource(raw_dir, run=run)
     findings = merge_findings(osv.collect(project))
     findings = annotate(findings, load_graph(project))

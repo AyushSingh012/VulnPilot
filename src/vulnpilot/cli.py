@@ -12,11 +12,14 @@ from rich.table import Table
 from vulnpilot import __version__, doctor
 from vulnpilot.config import Config, ConfigError, load_config
 from vulnpilot.detect import DetectError
+from vulnpilot.fixers.base import LockError
 from vulnpilot.models import ExitCode, Severity
-from vulnpilot.report.console import render_scan
+from vulnpilot.report.console import render_fix, render_scan
 from vulnpilot.report.json_out import write_scan_json
+from vulnpilot.runner import FixError, run_fix
 from vulnpilot.scanner import run_scan
 from vulnpilot.sources.base import SourceError
+from vulnpilot.worktree import WorktreeError
 
 app = typer.Typer(
     name="vulnpilot",
@@ -158,7 +161,18 @@ def fix_cmd(
         bool,
         typer.Option("--no-push", help="Commit locally and write the PR body to a file only."),
     ] = False,
+    keep_worktree: Annotated[
+        bool, typer.Option("--keep-worktree", help="Keep the temporary worktree for inspection.")
+    ] = False,
 ) -> None:
     """Full loop in a temporary worktree, then open or update the one PR."""
-    _load_config_or_exit(path)
-    _not_yet("vulnpilot fix", "Stages 3-4")
+    cfg = _load_config_or_exit(path)
+    if imports or cfg.imports:
+        _not_yet("--import / imports:", "Stage 5")
+    only = parse_severity_option(severity)
+    try:
+        outcome = run_fix(path, cfg, only, dry_run=dry_run, keep_worktree=keep_worktree)
+    except (DetectError, SourceError, WorktreeError, FixError, LockError) as exc:
+        _fail(str(exc))
+    render_fix(outcome, console)
+    raise typer.Exit(outcome.exit_code)

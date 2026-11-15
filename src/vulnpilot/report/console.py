@@ -8,7 +8,8 @@ from packaging.version import InvalidVersion, Version
 from rich.console import Console
 from rich.table import Table
 
-from vulnpilot.models import Finding, Severity
+from vulnpilot.models import Finding, FixStatus, Severity
+from vulnpilot.runner import FixOutcome
 from vulnpilot.scanner import ScanResult
 
 _STYLE = {
@@ -99,3 +100,96 @@ def render_scan(result: ScanResult, console: Console) -> None:
             "it no longer hides that finding.[/yellow]"
         )
     console.print(f"[dim]Raw scanner output: {result.raw_dir}[/dim]")
+
+
+_STATUS_STYLE = {
+    FixStatus.FIXED_AND_VALIDATED: "green",
+    FixStatus.FIXED_NOT_TESTED: "green",
+    FixStatus.FIXED_BUT_TESTS_FAILED: "red",
+    FixStatus.STILL_PRESENT: "red",
+    FixStatus.NO_SAFE_FIX: "yellow",
+    FixStatus.FIXED_IN_SOURCE: "cyan",
+    FixStatus.OUT_OF_SCOPE: "cyan",
+    FixStatus.INTRODUCED: "bold red",
+    FixStatus.SKIPPED: "dim",
+    FixStatus.ERROR: "bold red",
+}
+
+
+def render_plan(outcome: FixOutcome, console: Console) -> None:
+    plan = outcome.plan
+    if plan is None:
+        return
+    for warning in plan.warnings:
+        console.print(f"[yellow]{warning}[/yellow]")
+    resolvable = {u.package: u for u in outcome.resolvable}
+    if plan.upgrades:
+        table = Table(title="Planned upgrades", header_style="bold", title_justify="left")
+        for col in ("Package", "From", "To", "How", "Fixes", "Left", "Resolves"):
+            table.add_column(col, no_wrap=col != "Resolves", overflow="fold")
+        for u in plan.upgrades:
+            r = resolvable.get(u.package)
+            how: str = r.method if r else u.method
+            if r and r.parents:
+                how += f" ({', '.join(r.parents)})"
+            table.add_row(
+                u.package,
+                u.from_version,
+                u.to_version,
+                how,
+                str(len(u.finding_keys)),
+                str(len(u.unfixed_keys)) if u.unfixed_keys else "",
+                "[green]yes[/green]"
+                if r
+                else f"[red]no[/red]: {outcome.blocked.get(u.package, '')}",
+            )
+        console.print(table)
+    else:
+        console.print("No upgrades to make.")
+    if plan.no_fix:
+        console.print(f"{len(plan.no_fix)} findings have no safe fix (details in the full run).")
+
+
+def render_fix(outcome: FixOutcome, console: Console) -> None:
+    scan = outcome.scan
+    if scan is not None:
+        console.print(
+            f"[bold]{outcome.display_name or scan.project.root.name}[/bold] · "
+            f"{scan.project.manager} · "
+            f"worktree of {outcome.ref} @ {(scan.project.commit_sha or '')[:8]}"
+        )
+    if outcome.dry_run or outcome.report is None:
+        render_plan(outcome, console)
+        console.print("[dim]Dry run: nothing was tested or changed.[/dim]")
+        return
+    report = outcome.report
+    by_key = {f.key: f for f in [*report.findings_before, *report.findings_after]}
+    table = Table(header_style="bold")
+    for col in ("Status", "Package", "Advisory", "Change", "Note"):
+        table.add_column(col, no_wrap=col in ("Status", "Package", "Advisory"), overflow="fold")
+    order = list(FixStatus)
+    shown = [r for r in report.results if r.status is not FixStatus.SKIPPED]
+    shown.sort(key=lambda r: (order.index(r.status), by_key[r.finding_key].package))
+    for r in shown:
+        f = by_key[r.finding_key]
+        change = f"{r.upgrade.from_version} → {r.upgrade.to_version}" if r.upgrade else ""
+        table.add_row(
+            f"[{_STATUS_STYLE[r.status]}]{r.status.value}[/]",
+            f.package,
+            f.advisory_id,
+            change,
+            r.note,
+        )
+    console.print(table)
+    counts = Counter(r.status for r in report.results)
+    console.print(" · ".join(f"{n} {s.value}" for s, n in counts.items()))
+    for pkg, changes in outcome.pyproject_changes.items():
+        for old, new in changes:
+            console.print(f"pyproject.toml ({pkg}): {old} → {new}")
+    if outcome.changed:
+        console.print(f"Changed files: {', '.join(outcome.changed)}")
+    console.print(f"Test runs after the baseline: {outcome.test_runs}")
+    if outcome.worktree_path:
+        console.print(f"Worktree kept at {outcome.worktree_path}")
+    console.print(f"[dim]Run folder: {outcome.run_dir}[/dim]")
+    console.print("[dim]Commit, push and PR come in Stage 4.[/dim]")
