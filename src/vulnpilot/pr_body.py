@@ -36,7 +36,8 @@ def _plural(n: int, word: str, many: str | None = None) -> str:
 def _advisory(f: Finding) -> str:
     sev = "" if f.severity is Severity.UNKNOWN else f" ({f.severity.value.lower()})"
     kev = " **KEV**" if f.in_kev else ""
-    return f"[{f.advisory_id}]({_OSV}{f.advisory_id}){sev}{kev}"
+    epss = f" EPSS {f.epss:.0%}" if f.epss is not None and f.epss >= 0.1 else ""
+    return f"[{f.advisory_id}]({_OSV}{f.advisory_id}){sev}{kev}{epss}"
 
 
 def _how(r: FixResult, changes: dict[str, list[tuple[str, str]]]) -> str:

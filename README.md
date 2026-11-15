@@ -3,8 +3,8 @@
 Scan a Python project (uv first, then Poetry) for vulnerable dependencies, upgrade them,
 run the tests, rescan, and open one GitHub PR with every fix that is confirmed.
 
-Status: v1 in progress. `doctor`, `scan` and `fix` work end to end for uv projects
-(Trivy / Wiz imports, KEV / EPSS and Poetry come next).
+Status: v1 in progress. `doctor`, `scan` and `fix` work end to end for uv projects, with
+Trivy / Wiz imports, KEV / EPSS and SARIF. Poetry comes next.
 
 ```sh
 vulnpilot doctor                      # check external tools
@@ -13,6 +13,7 @@ vulnpilot scan . --severity HIGH,CRITICAL --json report.json
 vulnpilot fix [PATH] --dry-run        # planned upgrades; nothing tested or changed
 vulnpilot fix [PATH]                  # upgrade, test, isolate breakers, rescan, open/update the PR
 vulnpilot fix [PATH] --no-push        # same, but commit to a local branch and write the PR body to a file
+vulnpilot scan . --import trivy.json --import wiz.json --sarif scan.sarif
 ```
 
 `fix` works in a temporary git worktree of `origin/<base_branch>` (or the local base
@@ -34,6 +35,40 @@ pr:
   gh_user: your-github-login   # must be logged in: gh auth login
   labels: [security, dependencies]   # labels missing from the repo are skipped with a warning
 ```
+
+### Trivy and Wiz files
+
+`--import FILE` (repeatable) or `imports: [file, ...]` in `vulnpilot.yml` merges a Trivy or Wiz
+JSON report, of the repo or of a container image, with OSV-Scanner's findings. The format is
+detected from the file. Each finding is matched to the lockfile:
+
+| Finding | Result |
+|---|---|
+| Package in the lockfile, at an affected version | Fixed like any other finding |
+| Package in the lockfile, already at a fixed version (the image is older) | FIXED_IN_SOURCE: rebuild the image |
+| OS package, or a Python package the lockfile does not have | OUT_OF_SCOPE: needs a base-image or Dockerfile change |
+
+The same CVE from several tools is one finding listing every source. Secret findings in an
+import are never read, printed or stored. Files made by Trivy 0.69.4–0.69.6 (compromised
+releases) get a warning.
+
+```sh
+trivy image --scanners vuln --format json -o trivy.json <image>
+wizcli scan container-image <image> --by-policy-hits DISABLED --json-output-file wiz.json
+```
+
+### Exploitation signals and order
+
+Findings are marked from CISA's KEV catalog and FIRST's EPSS scores, then ordered: KEV first,
+then EPSS ≥ 0.1, then severity, then EPSS. Only CVE IDs are sent to those services; answers
+are cached for 24 hours under `~/.cache/vulnpilot/enrich/`. Offline, the last cached answer is
+used with a warning. Set `enrich: false` in `vulnpilot.yml` to turn the lookups off.
+
+### Output files
+
+`scan` and `fix` take `--json FILE` and `--sarif FILE`. SARIF (2.1.0) points each finding at
+the package's line in the lockfile, for GitHub code scanning; after `fix` it lists only what
+is still open.
 
 ### Which vulnerabilities get fixed
 
@@ -64,6 +99,7 @@ make integration   # live scan + fix against every fixture (uv, osv-scanner, PyP
 make github-test   # real PRs on a throwaway repo; see tests/test_github_live.py for the env vars
 make osv-data      # refresh saved osv-scanner output used by offline tests
 make fixtures      # regenerate fixture lockfiles at their seeded vulnerable versions
+scripts/capture_imports.sh   # rebuild the sample Trivy / Wiz files in tests/data/imports
 uv run python scripts/fixture_repo.py tests-break /tmp/tb   # a fixture as its own git repo
 uv run vulnpilot doctor
 ```

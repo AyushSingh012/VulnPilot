@@ -42,4 +42,5 @@ def isolated_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Keep raw scanner output out of the real ~/.cache during tests."""
     cache = tmp_path / "cache"
     monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
+    monkeypatch.setenv("VULNPILOT_OFFLINE", "1")  # no KEV / EPSS lookups unless a test asks
     return cache

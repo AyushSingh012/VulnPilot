@@ -10,8 +10,10 @@ from pathlib import Path
 
 from vulnpilot.config import Config, IgnoreRule
 from vulnpilot.detect import detect_project
+from vulnpilot.enrich import enrich
 from vulnpilot.lockgraph import load_graph, lock_versions
 from vulnpilot.models import Finding, Project, Severity
+from vulnpilot.prioritize import always_fix, gate_severity, sort_key
 from vulnpilot.proc import Runner
 from vulnpilot.sources.imports import load_import
 from vulnpilot.sources.merge import annotate, merge_findings
@@ -43,25 +45,6 @@ class ScanResult:
     tool_versions: dict[str, str] = field(default_factory=dict)
     imports: list[Path] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
-
-
-def sort_key(f: Finding) -> tuple[int, str, float, str]:
-    """Most severe first; a package's rows stay together. KEV / EPSS join in Stage 5."""
-    return (-f.severity.rank, f.package, -(f.cvss or 0.0), f.advisory_id)
-
-
-EPSS_LIKELY = 0.1
-"""EPSS probability at or above which a finding counts as likely to be exploited."""
-
-
-def gate_severity(f: Finding) -> Severity:
-    """Severity used for the threshold: an unrated finding counts as HIGH until rated."""
-    return Severity.HIGH if f.severity is Severity.UNKNOWN else f.severity
-
-
-def always_fix(f: Finding) -> bool:
-    """Known or likely exploitation outranks the severity threshold."""
-    return f.in_kev or (f.epss or 0.0) >= EPSS_LIKELY
 
 
 def _matching_rule(f: Finding, rules: list[IgnoreRule]) -> IgnoreRule | None:
@@ -137,6 +120,8 @@ def scan_project(
             if imp.tool_version:
                 imported_versions[imp.tool] = imp.tool_version
     findings = merge_findings(collected)
+    if cfg.enrich:
+        warnings += enrich(findings, cache_dir() / "enrich")
     findings = annotate(findings, load_graph(project))
     findings.sort(key=sort_key)
     result = ScanResult(

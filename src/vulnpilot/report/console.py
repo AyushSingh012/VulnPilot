@@ -47,6 +47,13 @@ def kind_label(f: Finding) -> str:
     return f"{kind}, dev" if f.dev_only else kind
 
 
+def exploit_label(f: Finding) -> str:
+    parts = ["[bold red]KEV[/]"] if f.in_kev else []
+    if f.epss is not None and f.epss >= 0.001:
+        parts.append(f"EPSS {f.epss:.1%}")
+    return " · ".join(parts)
+
+
 def found_by(f: Finding) -> str:
     return ", ".join(dict.fromkeys(h.tool.removesuffix("-scanner") for h in f.sources))
 
@@ -71,6 +78,9 @@ def render_scan(result: ScanResult, console: Console) -> None:
         show_via = any(via_label(f) for f in result.shown)
         if show_via:
             table.add_column("Via", overflow="fold", min_width=8)
+        show_exploit = any(exploit_label(f) for f in result.shown)
+        if show_exploit:
+            table.add_column("Exploit", no_wrap=True)
         if result.imports:
             table.add_column("Found by", overflow="fold")
         for f in result.shown:
@@ -83,6 +93,8 @@ def render_scan(result: ScanResult, console: Console) -> None:
                 kind_label(f),
             ]
             extra = [via_label(f)] if show_via else []
+            if show_exploit:
+                extra.append(exploit_label(f))
             if result.imports:
                 extra.append(found_by(f))
             table.add_row(*row, *extra)

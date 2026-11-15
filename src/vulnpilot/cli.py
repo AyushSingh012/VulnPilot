@@ -9,7 +9,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from vulnpilot import __version__, doctor
+from vulnpilot import __version__, doctor, proc
 from vulnpilot.config import Config, ConfigError, load_config
 from vulnpilot.detect import DetectError
 from vulnpilot.fixers.base import LockError
@@ -18,6 +18,7 @@ from vulnpilot.github import GitHubError
 from vulnpilot.models import ExitCode, Severity
 from vulnpilot.report.console import render_fix, render_scan
 from vulnpilot.report.json_out import write_scan_json
+from vulnpilot.report.sarif import build_sarif, remaining, write_sarif
 from vulnpilot.runner import FixError, run_fix
 from vulnpilot.scanner import resolve_imports, run_scan
 from vulnpilot.sources.base import SourceError
@@ -112,9 +113,18 @@ def _load_config_or_exit(path: Path) -> Config:
         raise typer.Exit(ExitCode.ERROR) from exc
 
 
-def _not_yet(what: str, stage: str) -> NoReturn:
-    err_console.print(f"[yellow]`{what}` is not built yet ({stage}).[/yellow]")
-    raise typer.Exit(ExitCode.ERROR)
+def lockfile_uri(lockfile: Path) -> str:
+    """The lockfile's path from the repo root (what SARIF viewers expect), else its name."""
+    try:
+        top = proc.run(["git", "rev-parse", "--show-toplevel"], cwd=lockfile.parent, timeout=30)
+    except (proc.ToolNotFoundError, proc.ToolTimeoutError):
+        return lockfile.name
+    if not top.ok:
+        return lockfile.name
+    try:
+        return lockfile.resolve().relative_to(Path(top.stdout.strip()).resolve()).as_posix()
+    except ValueError:
+        return lockfile.name
 
 
 _THRESHOLDS = ("LOW", "MEDIUM", "HIGH", "CRITICAL")
@@ -156,8 +166,6 @@ def scan_cmd(
 ) -> None:
     """Collect, merge and prioritize findings. Changes nothing."""
     cfg = with_min_severity(_load_config_or_exit(path), min_severity)
-    if sarif_out is not None:
-        _not_yet("--sarif", "Stage 5")
     only = parse_severity_option(severity)
     try:
         result = run_scan(path, cfg, only, imports=resolve_imports(path, cfg, imports))
@@ -167,6 +175,10 @@ def scan_cmd(
     if json_out is not None:
         write_scan_json(result, json_out)
         console.print(f"JSON report: {json_out}")
+    if sarif_out is not None:
+        lock = result.project.lockfile
+        write_sarif(build_sarif(result.shown, lock, lockfile_uri(lock)), sarif_out)
+        console.print(f"SARIF report: {sarif_out}")
     if result.shown:
         raise typer.Exit(ExitCode.FINDINGS_REMAIN)
 
@@ -187,6 +199,12 @@ def fix_cmd(
     keep_worktree: Annotated[
         bool, typer.Option("--keep-worktree", help="Keep the temporary worktree for inspection.")
     ] = False,
+    json_out: Annotated[
+        Path | None, typer.Option("--json", help="Write the run report as JSON.")
+    ] = None,
+    sarif_out: Annotated[
+        Path | None, typer.Option("--sarif", help="Write the findings still open as SARIF.")
+    ] = None,
 ) -> None:
     """Full loop in a temporary worktree, then open or update the one PR."""
     cfg = with_min_severity(_load_config_or_exit(path), min_severity)
@@ -212,4 +230,15 @@ def fix_cmd(
     ) as exc:
         _fail(str(exc))
     render_fix(outcome, console)
+    report = outcome.report
+    if report is not None and json_out is not None:
+        json_out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
+        console.print(f"JSON report: {json_out}")
+    if report is not None and sarif_out is not None and outcome.scan is not None:
+        every = {f.key: f for f in [*report.findings_after, *report.findings_before]}
+        still_open = remaining(list(every.values()), report.results)
+        lock = path / outcome.scan.project.lockfile.name
+        statuses = {r.finding_key: r for r in report.results}
+        write_sarif(build_sarif(still_open, lock, lockfile_uri(lock), statuses), sarif_out)
+        console.print(f"SARIF report: {sarif_out}")
     raise typer.Exit(outcome.exit_code)

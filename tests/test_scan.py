@@ -110,7 +110,6 @@ def test_cli_scan_exit_0_when_everything_filtered(monkeypatch: pytest.MonkeyPatc
     ("args", "match"),
     [
         (["--severity", "SEVERE"], "unknown severity"),
-        (["--sarif", "x.sarif"], "Stage 5"),
     ],
 )
 def test_cli_scan_option_errors(args: list[str], match: str) -> None:

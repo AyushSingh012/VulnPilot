@@ -19,9 +19,11 @@ vulnpilot = "vulnpilot.cli:app"
 
 [dependency-groups]
 dev = [
+    "jsonschema>=4.23",
     "mypy>=1.11",
     "pytest>=8.3",
     "ruff>=0.6",
+    "types-jsonschema>=4.26.0.20261006",
     "types-pyyaml>=6.0",
 ]
 
