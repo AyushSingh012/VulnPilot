@@ -20,7 +20,7 @@ OUT = REPO / "tests" / "data" / "osv"
 
 
 def capture(fixture_dir: Path) -> None:
-    lock = fixture_dir / "uv.lock"
+    lock = next(p for p in (fixture_dir / "uv.lock", fixture_dir / "poetry.lock") if p.is_file())
     result = subprocess.run(
         ["osv-scanner", "scan", "source", "-L", str(lock), "--format", "json"],
         capture_output=True,
@@ -38,7 +38,7 @@ def capture(fixture_dir: Path) -> None:
 
 
 def main() -> int:
-    for spec in sorted(FIXTURES.glob("uv/*/fixture.yaml")):
+    for spec in sorted(FIXTURES.glob("*/*/fixture.yaml")):
         capture(spec.parent)
     return 0
 

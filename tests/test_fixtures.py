@@ -57,8 +57,12 @@ def load(d: Path) -> FixtureSpec:
     return FixtureSpec.model_validate(yaml.safe_load((d / "fixture.yaml").read_text("utf-8")))
 
 
+def lockfile(d: Path) -> Path:
+    return d / ("poetry.lock" if "/poetry/" in d.as_posix() else "uv.lock")
+
+
 def locked_versions(d: Path) -> dict[str, str]:
-    lock = tomllib.loads((d / "uv.lock").read_text("utf-8"))
+    lock = tomllib.loads(lockfile(d).read_text("utf-8"))
     return {p["name"]: p["version"] for p in lock["package"] if "version" in p}
 
 
@@ -72,7 +76,7 @@ def test_fixture_is_complete(d: Path) -> None:
     assert (d / "pyproject.toml").is_file()
     assert list((d / "tests").glob("test_*.py")), "fixture needs its own tests"
     if spec.manager == "uv":
-        assert (d / "uv.lock").is_file(), "run scripts/regen_fixtures.py"
+        assert lockfile(d).is_file(), "run scripts/regen_fixtures.py"
 
 
 @pytest.mark.parametrize("d", FIXTURE_DIRS, ids=lambda d: d.name)

@@ -11,7 +11,7 @@ from types import ModuleType
 import pytest
 from packaging.version import Version
 
-from tests.conftest import UV_FIXTURES, fixture_spec
+from tests.conftest import ALL_FIXTURES, fixture_spec
 from vulnpilot.config import Config
 from vulnpilot.models import ExitCode
 from vulnpilot.runner import FixError, run_fix
@@ -31,7 +31,7 @@ def _fixture_repo_module() -> ModuleType:
     return module
 
 
-@pytest.mark.parametrize("d", UV_FIXTURES, ids=lambda d: d.name)
+@pytest.mark.parametrize("d", ALL_FIXTURES, ids=lambda d: d.name)
 def test_fix_matches_expected(d: Path, tmp_path: Path) -> None:
     repo = _fixture_repo_module().make_fixture_repo(d.name, tmp_path / d.name)
     expected = fixture_spec(d)["expected"]["fix"]

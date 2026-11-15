@@ -32,14 +32,23 @@ class Plan:
     warnings: list[str] = field(default_factory=list)
 
 
+_POETRY_INDEX_SOURCES = {"legacy", "pypi"}
+
+
+def _from_index(pkg: dict[str, object], poetry: bool) -> bool:
+    source = pkg.get("source") or {}
+    if not isinstance(source, dict):
+        return False
+    if poetry:  # poetry.lock: no [package.source] means PyPI; "legacy" is a private index
+        return not source or source.get("type") in _POETRY_INDEX_SOURCES
+    return "registry" in source  # uv.lock
+
+
 def registry_packages(lockfile: Path) -> set[str]:
     """Packages that come from a package index (not a path, git or URL source)."""
     data = tomllib.loads(lockfile.read_text(encoding="utf-8"))
-    return {
-        normalize_package(p["name"])
-        for p in data.get("package", [])
-        if "registry" in (p.get("source") or {})
-    }
+    poetry = lockfile.name == "poetry.lock"
+    return {normalize_package(p["name"]) for p in data.get("package", []) if _from_index(p, poetry)}
 
 
 def candidates(

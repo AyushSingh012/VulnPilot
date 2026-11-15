@@ -12,6 +12,13 @@ TESTS = Path(__file__).parent
 FIXTURES = TESTS / "fixtures"
 OSV_DATA = TESTS / "data" / "osv"
 UV_FIXTURES = sorted(p.parent for p in FIXTURES.glob("uv/*/fixture.yaml"))
+POETRY_FIXTURES = sorted(p.parent for p in FIXTURES.glob("poetry/*/fixture.yaml"))
+ALL_FIXTURES = UV_FIXTURES + POETRY_FIXTURES
+
+
+def fixture_dir(name: str) -> Path:
+    [match] = [d for d in ALL_FIXTURES if d.name == name]
+    return match
 
 
 def fixture_spec(d: Path) -> dict[str, Any]:

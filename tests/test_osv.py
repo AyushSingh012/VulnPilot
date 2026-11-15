@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import UV_FIXTURES, fake_osv_runner, fixture_spec, osv_data
+from tests.conftest import ALL_FIXTURES, UV_FIXTURES, fake_osv_runner, fixture_spec, osv_data
 from vulnpilot.detect import detect_project
 from vulnpilot.models import Severity
 from vulnpilot.proc import ProcResult
@@ -10,7 +10,7 @@ from vulnpilot.sources.base import SourceError
 from vulnpilot.sources.osv import OsvSource, parse_osv_json, preferred_id
 
 
-@pytest.mark.parametrize("d", UV_FIXTURES, ids=lambda d: d.name)
+@pytest.mark.parametrize("d", ALL_FIXTURES, ids=lambda d: d.name)
 def test_expected_findings_are_parsed(d: Path) -> None:
     findings = parse_osv_json(osv_data(d.name), "2.7.1")
     for exp in fixture_spec(d)["expected"]["scan"]:

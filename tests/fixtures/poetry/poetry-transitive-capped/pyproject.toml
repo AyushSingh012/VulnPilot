@@ -1,0 +1,19 @@
+[project]
+name = "fx-poetry-transitive-capped"
+version = "0.1.0"
+requires-python = ">=3.12,<4"
+dependencies = [
+    "capped-parent",
+]
+
+[tool.poetry]
+package-mode = false
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8"
+
+[tool.poetry.dependencies]
+capped-parent = { path = "capped_parent" }
+
+[tool.pytest.ini_options]
+addopts = "-p no:cacheprovider"

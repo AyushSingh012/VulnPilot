@@ -10,7 +10,7 @@ class LockError(Exception):
 
 
 class Fixer(Protocol):
-    """UvFixer now; PoetryFixer in Stage 6."""
+    """UvFixer and PoetryFixer."""
 
     def restore(self) -> None:
         """Put pyproject.toml and the lockfile back as they were on the base branch."""

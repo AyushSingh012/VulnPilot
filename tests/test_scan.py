@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from tests.conftest import FIXTURES, UV_FIXTURES, fake_osv_runner, fixture_spec
+from tests.conftest import ALL_FIXTURES, FIXTURES, fake_osv_runner, fixture_dir, fixture_spec
 from vulnpilot import scanner
 from vulnpilot.cli import app
 from vulnpilot.config import Config, IgnoreRule
@@ -19,7 +19,7 @@ def scan(
     name: str, cfg: Config | None = None, only: set[Severity] | None = None
 ) -> scanner.ScanResult:
     return run_scan(
-        FIXTURES / "uv" / name,
+        fixture_dir(name),
         cfg or Config(severity_threshold="LOW"),
         only,
         run=fake_osv_runner(name),
@@ -27,7 +27,7 @@ def scan(
     )
 
 
-@pytest.mark.parametrize("d", UV_FIXTURES, ids=lambda d: d.name)
+@pytest.mark.parametrize("d", ALL_FIXTURES, ids=lambda d: d.name)
 def test_every_fixture_matches_its_expected_scan(d: Path) -> None:
     result = scan(d.name)
     for exp in fixture_spec(d)["expected"]["scan"]:

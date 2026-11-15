@@ -1,0 +1,12 @@
+description: Vulnerable transitive urllib3 under requests; the parent's range allows the fix.
+manager: poetry
+seed:
+  urllib3: 2.2.1
+expected:
+  scan:
+    - {package: urllib3, installed: 2.2.1, advisory: CVE-2024-37891, direct: false, path: [fx-poetry-transitive, requests, urllib3]}
+  fix:
+    exit_code: 0
+    changed_files: [poetry.lock]
+    results:
+      - {package: urllib3, status: FIXED_AND_VALIDATED, method: lock-upgrade, min_to_version: 2.5.0}

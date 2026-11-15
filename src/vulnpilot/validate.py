@@ -9,6 +9,7 @@ from pathlib import Path
 
 from vulnpilot import proc
 from vulnpilot.config import ValidateConfig
+from vulnpilot.fixers.poetry_fix import poetry_major
 from vulnpilot.models import Manager, ValidationResult
 from vulnpilot.proc import ToolNotFoundError, ToolTimeoutError
 
@@ -17,11 +18,22 @@ MAX_FAILED_NAMES = 20
 
 
 def tool_env(run_dir: Path) -> dict[str, str]:
-    """Environment for uv / test runs: keep the venv and bytecode out of the worktree."""
+    """Environment for uv / Poetry / test runs: keep venvs and bytecode out of the worktree."""
     env = {k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"}
     env["UV_PROJECT_ENVIRONMENT"] = str(run_dir / "venv")
+    env["POETRY_VIRTUALENVS_PATH"] = str(run_dir / "poetry-venvs")
+    env["POETRY_VIRTUALENVS_IN_PROJECT"] = "false"
+    env["POETRY_VIRTUALENVS_CREATE"] = "true"
+    env["POETRY_NO_INTERACTION"] = "1"
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     return env
+
+
+def install_command(cfg: ValidateConfig, manager: Manager, env: dict[str, str]) -> str:
+    """The configured install command, else the manager's default for its version."""
+    if cfg.install or manager != "poetry":
+        return cfg.install_command(manager)
+    return "poetry sync" if poetry_major(env) >= 2 else "poetry install --sync"
 
 
 def failed_test_names(output: str) -> list[str]:
@@ -40,7 +52,7 @@ class Validator:
         logs_dir: Path,
     ) -> None:
         self.project_dir = project_dir
-        self.install_cmd = shlex.split(cfg.install_command(manager))
+        self.install_cmd = shlex.split(install_command(cfg, manager, env))
         test = cfg.test_command(manager)
         self.test_cmd = shlex.split(test) if test else None
         self.timeout = cfg.timeout_minutes * 60

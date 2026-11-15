@@ -1,10 +1,10 @@
 # VulnPilot
 
-Scan a Python project (uv first, then Poetry) for vulnerable dependencies, upgrade them,
+Scan a Python project (uv or Poetry) for vulnerable dependencies, upgrade them,
 run the tests, rescan, and open one GitHub PR with every fix that is confirmed.
 
-Status: v1 in progress. `doctor`, `scan` and `fix` work end to end for uv projects, with
-Trivy / Wiz imports, KEV / EPSS and SARIF. Poetry comes next.
+Status: v1 in progress. `doctor`, `scan` and `fix` work end to end for uv and Poetry
+projects, with Trivy / Wiz imports, KEV / EPSS and SARIF.
 
 ```sh
 vulnpilot doctor                      # check external tools
@@ -35,6 +35,19 @@ pr:
   gh_user: your-github-login   # must be logged in: gh auth login
   labels: [security, dependencies]   # labels missing from the repo are skipped with a warning
 ```
+
+### Poetry projects
+
+`fix` upgrades a Poetry project to the same exact target version as a uv project would get:
+the lowest release that fixes the advisories, not the newest one the range allows. Each
+target is pinned in a temporary dependency group, the project is locked, the group is
+removed and the project is locked again; Poetry keeps locked versions, so only the targets
+move. A direct dependency whose constraint blocks the fix gets the smallest edit in its own
+style (`"2.31.0"` → `"2.33.0"`, `^2.31` → `^3.0.1`). Poetry 1.x and 2.x both work
+(`poetry lock --no-update` / `poetry install --sync` on 1.x).
+
+Poetry rejects any version that declares `python <4` when the project's range is open-ended
+(`>=3.12`), so bound it (`>=3.12,<4` or `^3.12`), as most Poetry projects already do.
 
 ### Trivy and Wiz files
 

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import UV_FIXTURES, fixture_spec
+from tests.conftest import ALL_FIXTURES, fixture_spec
 from vulnpilot.config import Config
 from vulnpilot.scanner import run_scan
 
@@ -19,7 +19,7 @@ pytestmark = [
 ]
 
 
-@pytest.mark.parametrize("d", UV_FIXTURES, ids=lambda d: d.name)
+@pytest.mark.parametrize("d", ALL_FIXTURES, ids=lambda d: d.name)
 def test_live_scan_finds_expected(d: Path) -> None:
     result = run_scan(d, Config(severity_threshold="LOW"), today=date.today())
     for exp in fixture_spec(d)["expected"]["scan"]:

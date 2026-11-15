@@ -1,1 +1,1 @@
-"""Fixers apply planned upgrades to the project files (uv now, Poetry in Stage 6)."""
+"""Fixers apply planned upgrades to the project files (uv and Poetry)."""

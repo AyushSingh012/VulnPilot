@@ -5,6 +5,8 @@ from vulnpilot.specifiers import (
     SpecifierEditError,
     adjust_specifier,
     allows,
+    poetry_allows,
+    raise_poetry,
     raise_to,
     requirement_strings,
 )
@@ -86,3 +88,73 @@ def test_raise_to_keeps_extras_and_markers() -> None:
     _, changes = raise_to(PYPROJECT, "rich", "13.1.2")
     [(_, new)] = changes
     assert new == 'rich[jupyter]~=13.1.2; python_version >= "3.12"'
+
+
+@pytest.mark.parametrize(
+    ("constraint", "inside", "outside"),
+    [
+        ("^1.2.3", ["1.2.3", "1.9"], ["1.2.2", "2.0"]),
+        ("^0.2.3", ["0.2.9"], ["0.3.0"]),
+        ("^0.0.3", ["0.0.3"], ["0.0.4"]),
+        ("~1.2.3", ["1.2.9"], ["1.3.0"]),
+        ("~1", ["1.9"], ["2.0"]),
+        ("2.31.0", ["2.31.0"], ["2.31.1"]),
+        (">=2.31,<2.32", ["2.31.5"], ["2.32.0"]),
+        (">=2.31 <2.32", ["2.31.5"], ["2.32.0"]),
+        ("*", ["0.1", "99"], []),
+        ("^1.0 || ^3.0", ["1.5", "3.1"], ["2.0"]),
+    ],
+)
+def test_poetry_constraints(constraint: str, inside: list[str], outside: list[str]) -> None:
+    assert all(poetry_allows(constraint, v) for v in inside)
+    assert not any(poetry_allows(constraint, v) for v in outside)
+
+
+@pytest.mark.parametrize(
+    ("constraint", "target", "expected"),
+    [
+        ("^2.31.0", "3.0.1", "^3.0.1"),
+        ("~2.31.0", "2.32.4", "~2.32.4"),
+        ("2.31.0", "2.33.0", "2.33.0"),
+        ("==2.31.0", "2.33.0", "2.33.0"),
+        (">=2.31,<2.32", "2.32.4", "<2.33,>=2.32.4"),
+    ],
+)
+def test_raise_poetry_keeps_the_style(constraint: str, target: str, expected: str) -> None:
+    new = raise_poetry(constraint, target)
+    assert new == expected and poetry_allows(new, target)
+
+
+def test_raise_poetry_refuses_alternatives() -> None:
+    with pytest.raises(SpecifierEditError, match="cannot safely rewrite"):
+        raise_poetry("^1.0 || ^3.0", "2.0")
+
+
+POETRY_PYPROJECT = """\
+[tool.poetry]
+name = "demo"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+requests = "2.31.0"  # pinned on purpose
+rich = { version = "^13.0", extras = ["jupyter"] }
+local = { path = "../local" }
+
+[tool.poetry.group.dev.dependencies]
+requests = ">=2.31,<2.32"
+"""
+
+
+def test_poetry_tables_are_read_and_edited_in_place() -> None:
+    assert not allows(POETRY_PYPROJECT, "requests", "2.32.4")
+    assert allows(POETRY_PYPROJECT, "local", "9.9")  # path entries carry no version
+    assert allows(POETRY_PYPROJECT, "python", "2.0")  # python is not a package
+    text, changes = raise_to(POETRY_PYPROJECT, "requests", "2.32.4")
+    assert changes == [
+        ('requests = "2.31.0"', 'requests = "2.32.4"'),
+        ('requests = ">=2.31,<2.32"', 'requests = "<2.33,>=2.32.4"'),
+    ]
+    assert "# pinned on purpose" in text
+    text, changes = raise_to(text, "rich", "14.1.0")
+    assert changes == [('rich = "^13.0"', 'rich = "^14.1.0"')]
+    assert 'extras = ["jupyter"]' in text and allows(text, "rich", "14.1.0")

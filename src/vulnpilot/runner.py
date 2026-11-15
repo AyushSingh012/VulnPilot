@@ -15,6 +15,7 @@ from vulnpilot.classify import classify, exit_code
 from vulnpilot.config import Config
 from vulnpilot.detect import detect_project
 from vulnpilot.fixers.base import LockError
+from vulnpilot.fixers.poetry_fix import PoetryFixer
 from vulnpilot.fixers.uv_fix import UvFixer
 from vulnpilot.git_ops import (
     TRAILER,
@@ -106,8 +107,6 @@ def run_fix(
     ``host`` is where the PR lives; by default gh on the repo behind ``origin``.
     """
     origin = detect_project(path, base_branch=cfg.pr.base_branch)
-    if origin.manager != "uv":
-        raise FixError("fixing Poetry projects is not built yet (Stage 6); `scan` works")
     run_id = new_run_id()
     run_dir = cache_dir() / "runs" / run_id
     env = tool_env(run_dir)
@@ -255,7 +254,11 @@ def _fix_in_worktree(
     rank = _priority(before)
     plan.upgrades.sort(key=lambda u: (-rank.get(u.package, 0), u.package))
 
-    fixer = UvFixer(project.root, graph, env)
+    fixer: UvFixer | PoetryFixer
+    if project.manager == "poetry":
+        fixer = PoetryFixer(project.root, graph, env)
+    else:
+        fixer = UvFixer(project.root, graph, env)
     resolvable, blocked = fixer.resolve_each(plan.upgrades)
     if fixer.resolver_errors:
         (run_dir / "logs").mkdir(parents=True, exist_ok=True)

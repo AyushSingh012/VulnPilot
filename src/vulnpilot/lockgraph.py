@@ -104,15 +104,27 @@ def _requirement_names(specs: list[str]) -> set[str]:
     return names
 
 
-def load_poetry_graph(pyproject: dict[str, Any], root_name: str) -> LockGraph:
-    """v1 reads only which packages are direct for Poetry; paths come in Stage 6."""
+def load_poetry_graph(
+    pyproject: dict[str, Any], root_name: str, lockfile: Path | None = None
+) -> LockGraph:
+    """Direct packages from pyproject.toml; edges from poetry.lock's per-package dependencies."""
     graph = LockGraph(root=normalize_package(root_name))
+    if lockfile is not None and lockfile.is_file():
+        data = tomllib.loads(lockfile.read_text(encoding="utf-8"))
+        for pkg in data.get("package", []):
+            deps = {normalize_package(n) for n in (pkg.get("dependencies") or {})}
+            graph.edges.setdefault(normalize_package(pkg["name"]), set()).update(deps)
     graph.direct |= _requirement_names(pyproject.get("project", {}).get("dependencies", []))
     poetry = pyproject.get("tool", {}).get("poetry", {})
     graph.direct |= {normalize_package(n) for n in poetry.get("dependencies", {}) if n != "python"}
     for group in poetry.get("group", {}).values():
         graph.direct_dev |= {normalize_package(n) for n in group.get("dependencies", {})}
+    groups = (pyproject.get("dependency-groups") or {}).values()
+    graph.direct_dev |= {
+        n for g in groups for n in _requirement_names([s for s in g if isinstance(s, str)])
+    }
     graph.direct_dev -= graph.direct
+    graph.edges[graph.root] = graph.direct | graph.direct_dev
     return graph
 
 
@@ -121,7 +133,7 @@ def load_graph(project: Project) -> LockGraph:
     name = project_name(pyproject) or project.root.name
     if project.manager == "uv":
         return load_uv_graph(project.lockfile, name)
-    return load_poetry_graph(pyproject, name)
+    return load_poetry_graph(pyproject, name, project.lockfile)
 
 
 def lock_versions(lockfile: Path) -> dict[str, str]:

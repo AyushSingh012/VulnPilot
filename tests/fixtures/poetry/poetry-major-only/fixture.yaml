@@ -1,0 +1,12 @@
+description: urllib3 1.x whose remaining advisories are fixed only in 2.x; majors are not allowed.
+manager: poetry
+seed:
+  urllib3: 1.26.20
+expected:
+  scan:
+    - {package: urllib3, installed: 1.26.20, advisory: CVE-2025-50181}
+  fix:
+    exit_code: 1
+    changed_files: []
+    results:
+      - {package: urllib3, status: NO_SAFE_FIX}
