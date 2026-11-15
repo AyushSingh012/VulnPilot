@@ -141,3 +141,10 @@ def test_committed_samples_hold_no_tenant_data() -> None:
             'failedPolicyMatches": [{"policy": {"id',
         ):
             assert needle not in text, (path.name, needle)
+
+
+def test_wiz_epss_is_converted_from_percent() -> None:
+    # Wiz reports CVE-2024-56326 at epssProbability 0.5 (percent); FIRST has it at 0.00522.
+    imp = load_import(IMPORTS / "wiz-image.json", LOCK)
+    [jinja] = [f for f in imp.findings if f.advisory_id == "CVE-2024-56326"]
+    assert jinja.epss == pytest.approx(0.005)

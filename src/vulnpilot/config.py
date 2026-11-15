@@ -98,9 +98,11 @@ class Config(_Strict):
         return Severity(self.severity_threshold)
 
 
-def load_config(project_root: Path) -> Config:
-    """Read ``<project_root>/vulnpilot.yml`` if it exists, else return the defaults."""
-    path = project_root / CONFIG_FILENAME
+def load_config(project_root: Path, file: Path | None = None) -> Config:
+    """Read ``file``, else ``<project_root>/vulnpilot.yml`` if it exists, else the defaults."""
+    path = file or project_root / CONFIG_FILENAME
+    if file is not None and not file.is_file():
+        raise ConfigError(f"{file}: no such config file")
     if not path.is_file():
         return Config()
     try:

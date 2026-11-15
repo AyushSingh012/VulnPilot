@@ -51,6 +51,15 @@ SeverityOpt = Annotated[
     str | None,
     typer.Option("--severity", help="Only these severities, e.g. MEDIUM,HIGH,CRITICAL."),
 ]
+ConfigOpt = Annotated[
+    Path | None,
+    typer.Option(
+        "--config",
+        dir_okay=False,
+        resolve_path=True,
+        help="Config file to use instead of <PATH>/vulnpilot.yml.",
+    ),
+]
 MinSeverityOpt = Annotated[
     str | None,
     typer.Option(
@@ -78,9 +87,9 @@ def main(
 
 
 @app.command("doctor")
-def doctor_cmd(path: PathArg = Path()) -> None:
+def doctor_cmd(path: PathArg = Path(), config: ConfigOpt = None) -> None:
     """Check that osv-scanner, uv, poetry, git and gh are installed and gh is logged in."""
-    cfg = _load_config_or_exit(path)
+    cfg = _load_config_or_exit(path, config)
     results = doctor.run_checks(gh_user=cfg.pr.gh_user)
     table = Table(title="vulnpilot doctor", show_lines=False)
     table.add_column("Tool")
@@ -109,9 +118,9 @@ def _fail(message: str | Exception) -> NoReturn:
     raise typer.Exit(ExitCode.ERROR)
 
 
-def _load_config_or_exit(path: Path) -> Config:
+def _load_config_or_exit(path: Path, file: Path | None = None) -> Config:
     try:
-        return load_config(path)
+        return load_config(path, file)
     except ConfigError as exc:
         _fail(exc)
 
@@ -164,11 +173,12 @@ def scan_cmd(
     imports: ImportOpt = None,
     severity: SeverityOpt = None,
     min_severity: MinSeverityOpt = None,
+    config: ConfigOpt = None,
     json_out: Annotated[Path | None, typer.Option("--json", help="Write a JSON report.")] = None,
     sarif_out: Annotated[Path | None, typer.Option("--sarif", help="Write a SARIF report.")] = None,
 ) -> None:
     """Collect, merge and prioritize findings. Changes nothing."""
-    cfg = with_min_severity(_load_config_or_exit(path), min_severity)
+    cfg = with_min_severity(_load_config_or_exit(path, config), min_severity)
     only = parse_severity_option(severity)
     try:
         result = run_scan(path, cfg, only, imports=resolve_imports(path, cfg, imports))
@@ -192,6 +202,7 @@ def fix_cmd(
     imports: ImportOpt = None,
     severity: SeverityOpt = None,
     min_severity: MinSeverityOpt = None,
+    config: ConfigOpt = None,
     dry_run: Annotated[
         bool, typer.Option("--dry-run", help="Show planned upgrades; change nothing.")
     ] = False,
@@ -210,7 +221,7 @@ def fix_cmd(
     ] = None,
 ) -> None:
     """Full loop in a temporary worktree, then open or update the one PR."""
-    cfg = with_min_severity(_load_config_or_exit(path), min_severity)
+    cfg = with_min_severity(_load_config_or_exit(path, config), min_severity)
     only = parse_severity_option(severity)
     try:
         outcome = run_fix(

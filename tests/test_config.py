@@ -79,3 +79,15 @@ def test_tests_can_be_turned_off(tmp_path: Path) -> None:
 def test_bad_config_is_a_clear_error(tmp_path: Path, text: str, match: str) -> None:
     with pytest.raises(ConfigError, match=match):
         load_config(write(tmp_path, text))
+
+
+def test_config_file_outside_the_project(tmp_path: Path) -> None:
+    outside = tmp_path / "elsewhere.yml"
+    outside.write_text("pr:\n  base_branch: develop\n", encoding="utf-8")
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "vulnpilot.yml").write_text("pr:\n  base_branch: main\n", encoding="utf-8")
+    assert load_config(project, outside).pr.base_branch == "develop"
+    assert load_config(project).pr.base_branch == "main"
+    with pytest.raises(ConfigError, match="no such config file"):
+        load_config(project, tmp_path / "missing.yml")

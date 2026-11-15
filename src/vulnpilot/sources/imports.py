@@ -171,7 +171,8 @@ def _wiz_vulns(data: dict[str, Any]) -> list[_Vuln]:
                     severity=_severity(v.get("severity")),
                     fixed=_fixed_list(v.get("fixedVersion")),
                     score=v.get("score"),
-                    epss=float(epss) if epss is not None else None,
+                    # Wiz gives EPSS in percent (0.5 = 0.5 %); VulnPilot uses 0-1 like FIRST.
+                    epss=float(epss) / 100 if epss is not None else None,
                     kev=bool(v.get("hasCisaKevExploit")),
                     references=(str(v["source"]),) if v.get("source") else (),
                 )
