@@ -10,9 +10,10 @@ from pathlib import Path
 
 from vulnpilot.config import Config, IgnoreRule
 from vulnpilot.detect import detect_project
-from vulnpilot.lockgraph import load_graph
+from vulnpilot.lockgraph import load_graph, lock_versions
 from vulnpilot.models import Finding, Project, Severity
 from vulnpilot.proc import Runner
+from vulnpilot.sources.imports import load_import
 from vulnpilot.sources.merge import annotate, merge_findings
 from vulnpilot.sources.osv import OsvSource
 
@@ -40,6 +41,8 @@ class ScanResult:
     below_threshold: list[Finding] = field(default_factory=list)
     expired_rules: list[IgnoreRule] = field(default_factory=list)
     tool_versions: dict[str, str] = field(default_factory=dict)
+    imports: list[Path] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
 
 def sort_key(f: Finding) -> tuple[int, str, float, str]:
@@ -94,10 +97,19 @@ def run_scan(
     only: set[Severity] | None = None,
     run: Runner | None = None,
     today: date | None = None,
+    imports: list[Path] | None = None,
 ) -> ScanResult:
     project = detect_project(path, base_branch=cfg.pr.base_branch)
     run_id = new_run_id()
-    return scan_project(project, cfg, run_id, cache_dir() / "runs" / run_id, only, run, today)
+    raw = cache_dir() / "runs" / run_id
+    return scan_project(project, cfg, run_id, raw, only, run, today, imports=imports)
+
+
+def resolve_imports(project_root: Path, cfg: Config, extra: list[Path] | None) -> list[Path]:
+    """``imports:`` from vulnpilot.yml (relative to the project) plus --import files."""
+    paths = [p if p.is_absolute() else project_root / p for p in cfg.imports]
+    paths += [p.resolve() for p in extra or []]
+    return list(dict.fromkeys(p.resolve() for p in paths))
 
 
 def scan_project(
@@ -108,13 +120,34 @@ def scan_project(
     only: set[Severity] | None = None,
     run: Runner | None = None,
     today: date | None = None,
+    *,
+    imports: list[Path] | None = None,
 ) -> ScanResult:
     """Collect, merge, annotate and filter findings for an already-detected project."""
     osv = OsvSource(raw_dir, run=run)
-    findings = merge_findings(osv.collect(project))
+    collected = osv.collect(project)
+    warnings: list[str] = []
+    imported_versions: dict[str, str] = {}
+    if imports:
+        lock = lock_versions(project.lockfile)
+        for path in imports:
+            imp = load_import(path, lock)
+            collected += imp.findings
+            warnings += imp.warnings
+            if imp.tool_version:
+                imported_versions[imp.tool] = imp.tool_version
+    findings = merge_findings(collected)
     findings = annotate(findings, load_graph(project))
     findings.sort(key=sort_key)
-    result = ScanResult(project=project, run_id=run_id, raw_dir=raw_dir, findings=findings)
+    result = ScanResult(
+        project=project,
+        run_id=run_id,
+        raw_dir=raw_dir,
+        findings=findings,
+        imports=list(imports or []),
+        warnings=warnings,
+    )
+    result.tool_versions.update(imported_versions)
     version = next((h.tool_version for f in findings for h in f.sources if h.tool_version), None)
     if version:
         result.tool_versions["osv-scanner"] = version

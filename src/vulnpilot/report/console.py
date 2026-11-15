@@ -39,8 +39,16 @@ def fix_label(f: Finding) -> str:
 
 
 def kind_label(f: Finding) -> str:
+    if not f.in_lockfile:
+        return {"os": "os package", "PyPI": "not in lockfile"}.get(f.ecosystem, "image only")
+    if f.fixed_in_source:
+        return "fixed in lockfile"
     kind = "direct" if f.is_direct else "transitive"
     return f"{kind}, dev" if f.dev_only else kind
+
+
+def found_by(f: Finding) -> str:
+    return ", ".join(dict.fromkeys(h.tool.removesuffix("-scanner") for h in f.sources))
 
 
 def via_label(f: Finding) -> str:
@@ -63,6 +71,8 @@ def render_scan(result: ScanResult, console: Console) -> None:
         show_via = any(via_label(f) for f in result.shown)
         if show_via:
             table.add_column("Via", overflow="fold", min_width=8)
+        if result.imports:
+            table.add_column("Found by", overflow="fold")
         for f in result.shown:
             row = [
                 f"[{_STYLE[f.severity]}]{f.severity.value}[/]",
@@ -72,7 +82,10 @@ def render_scan(result: ScanResult, console: Console) -> None:
                 fix_label(f),
                 kind_label(f),
             ]
-            table.add_row(*row, *([via_label(f)] if show_via else []))
+            extra = [via_label(f)] if show_via else []
+            if result.imports:
+                extra.append(found_by(f))
+            table.add_row(*row, *extra)
         console.print(table)
 
     counts = Counter(f.severity for f in result.shown)
@@ -99,6 +112,8 @@ def render_scan(result: ScanResult, console: Console) -> None:
             f"[yellow]Ignore rule for {rule.id} expired on {rule.expires}; "
             "it no longer hides that finding.[/yellow]"
         )
+    for warning in result.warnings:
+        console.print(f"[yellow]Warning: {warning}[/yellow]")
     console.print(f"[dim]Raw scanner output: {result.raw_dir}[/dim]")
 
 

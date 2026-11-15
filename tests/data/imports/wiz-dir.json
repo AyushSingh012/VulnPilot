@@ -1,0 +1,145 @@
+{
+  "createdAt": "2026-11-15T12:39:34.355411724Z",
+  "extraInfo": {
+    "clientName": "WizCLI",
+    "clientVersion": "1.68.0-e4d571a"
+  },
+  "scanOriginResource": {
+    "__typename": "CICDScanOriginDirectory",
+    "name": "tests/fixtures/uv/tests-break"
+  },
+  "status": {
+    "state": "SUCCESS",
+    "verdict": "PASSED_BY_POLICY"
+  },
+  "result": {
+    "osPackages": null,
+    "libraries": [
+      {
+        "name": "jinja2",
+        "version": "3.1.2",
+        "path": "/uv.lock",
+        "detectionMethod": "LIBRARY",
+        "vulnerabilities": [
+          {
+            "name": "CVE-2024-22195",
+            "severity": "MEDIUM",
+            "fixedVersion": "3.1.3",
+            "source": "https://github.com/advisories/GHSA-h5c8-rqwp-cp95",
+            "score": 6.1,
+            "hasExploit": true,
+            "hasCisaKevExploit": false,
+            "epssProbability": 0.9,
+            "epssPercentile": 60,
+            "epssSeverity": "MEDIUM"
+          },
+          {
+            "name": "CVE-2024-56201",
+            "severity": "MEDIUM",
+            "fixedVersion": "3.1.5",
+            "source": "https://github.com/advisories/GHSA-gmj6-6f8f-6699",
+            "score": 5.4,
+            "hasExploit": false,
+            "hasCisaKevExploit": false,
+            "epssProbability": 0.3,
+            "epssPercentile": 23.9,
+            "epssSeverity": "LOW"
+          },
+          {
+            "name": "CVE-2024-34064",
+            "severity": "MEDIUM",
+            "fixedVersion": "3.1.4",
+            "source": "https://github.com/advisories/GHSA-h75v-3vvj-5mfj",
+            "score": 5.4,
+            "hasExploit": false,
+            "hasCisaKevExploit": false,
+            "epssProbability": 1,
+            "epssPercentile": 62.7,
+            "epssSeverity": "MEDIUM"
+          },
+          {
+            "name": "CVE-2024-56326",
+            "severity": "MEDIUM",
+            "fixedVersion": "3.1.5",
+            "source": "https://github.com/advisories/GHSA-q2x7-8rv6-6q7h",
+            "score": 5.4,
+            "hasExploit": false,
+            "hasCisaKevExploit": false,
+            "epssProbability": 0.5,
+            "epssPercentile": 44.9,
+            "epssSeverity": "LOW"
+          },
+          {
+            "name": "CVE-2025-27516",
+            "severity": "MEDIUM",
+            "fixedVersion": "3.1.6",
+            "source": "https://github.com/advisories/GHSA-cpwx-vrp4-4pq7",
+            "score": 5.4,
+            "hasExploit": false,
+            "hasCisaKevExploit": false,
+            "epssProbability": 0.5,
+            "epssPercentile": 43.8,
+            "epssSeverity": "LOW"
+          }
+        ]
+      },
+      {
+        "name": "requests",
+        "version": "2.31.0",
+        "path": "/uv.lock",
+        "detectionMethod": "LIBRARY",
+        "vulnerabilities": [
+          {
+            "name": "CVE-2026-25645",
+            "severity": "MEDIUM",
+            "fixedVersion": "2.33.0",
+            "source": "https://github.com/advisories/GHSA-gc5v-m9x4-r6x2",
+            "score": 5.5,
+            "hasExploit": false,
+            "hasCisaKevExploit": false,
+            "epssProbability": 0.2,
+            "epssPercentile": 9.1,
+            "epssSeverity": "LOW"
+          },
+          {
+            "name": "CVE-2024-35195",
+            "severity": "MEDIUM",
+            "fixedVersion": "2.32.0",
+            "source": "https://github.com/advisories/GHSA-9wx4-h78v-vm56",
+            "score": 5.6,
+            "hasExploit": false,
+            "hasCisaKevExploit": false,
+            "epssProbability": 0.3,
+            "epssPercentile": 27.9,
+            "epssSeverity": "LOW"
+          },
+          {
+            "name": "CVE-2024-47081",
+            "severity": "MEDIUM",
+            "fixedVersion": "2.32.4",
+            "source": "https://github.com/advisories/GHSA-9hjg-9r4m-mvj7",
+            "score": 5.3,
+            "hasExploit": true,
+            "hasCisaKevExploit": false,
+            "epssProbability": 1,
+            "epssPercentile": 64,
+            "epssSeverity": "MEDIUM"
+          }
+        ]
+      }
+    ],
+    "cpes": null,
+    "secrets": null,
+    "analytics": {
+      "vulnerabilities": {
+        "infoCount": 0,
+        "lowCount": 0,
+        "mediumCount": 8,
+        "highCount": 0,
+        "criticalCount": 0,
+        "unfixedCount": 0,
+        "totalCount": 8
+      }
+    }
+  }
+}

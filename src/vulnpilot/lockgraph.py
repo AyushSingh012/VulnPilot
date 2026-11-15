@@ -122,3 +122,13 @@ def load_graph(project: Project) -> LockGraph:
     if project.manager == "uv":
         return load_uv_graph(project.lockfile, name)
     return load_poetry_graph(pyproject, name)
+
+
+def lock_versions(lockfile: Path) -> dict[str, str]:
+    """Normalized package name -> locked version (uv.lock and poetry.lock share the shape)."""
+    data = tomllib.loads(lockfile.read_text(encoding="utf-8"))
+    return {
+        normalize_package(p["name"]): str(p["version"])
+        for p in data.get("package", [])
+        if "name" in p and "version" in p
+    }

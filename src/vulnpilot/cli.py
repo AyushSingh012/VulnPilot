@@ -19,7 +19,7 @@ from vulnpilot.models import ExitCode, Severity
 from vulnpilot.report.console import render_fix, render_scan
 from vulnpilot.report.json_out import write_scan_json
 from vulnpilot.runner import FixError, run_fix
-from vulnpilot.scanner import run_scan
+from vulnpilot.scanner import resolve_imports, run_scan
 from vulnpilot.sources.base import SourceError
 from vulnpilot.worktree import WorktreeError
 
@@ -156,13 +156,11 @@ def scan_cmd(
 ) -> None:
     """Collect, merge and prioritize findings. Changes nothing."""
     cfg = with_min_severity(_load_config_or_exit(path), min_severity)
-    if imports or cfg.imports:
-        _not_yet("--import / imports:", "Stage 5")
     if sarif_out is not None:
         _not_yet("--sarif", "Stage 5")
     only = parse_severity_option(severity)
     try:
-        result = run_scan(path, cfg, only)
+        result = run_scan(path, cfg, only, imports=resolve_imports(path, cfg, imports))
     except (DetectError, SourceError) as exc:
         _fail(str(exc))
     render_scan(result, console)
@@ -192,12 +190,16 @@ def fix_cmd(
 ) -> None:
     """Full loop in a temporary worktree, then open or update the one PR."""
     cfg = with_min_severity(_load_config_or_exit(path), min_severity)
-    if imports or cfg.imports:
-        _not_yet("--import / imports:", "Stage 5")
     only = parse_severity_option(severity)
     try:
         outcome = run_fix(
-            path, cfg, only, dry_run=dry_run, push_pr=not no_push, keep_worktree=keep_worktree
+            path,
+            cfg,
+            only,
+            dry_run=dry_run,
+            push_pr=not no_push,
+            keep_worktree=keep_worktree,
+            imports=resolve_imports(path, cfg, imports),
         )
     except (
         DetectError,

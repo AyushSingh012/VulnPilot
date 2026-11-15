@@ -31,6 +31,7 @@ def _combine(items: list[Finding]) -> Finding:
     aliases = sorted({a for f in items for a in f.aliases})
     severity = max((f.severity for f in items), key=lambda s: s.rank)
     scores = [f.cvss for f in items if f.cvss is not None]
+    epss = [f.epss for f in items if f.epss is not None]
     refs: dict[str, None] = {}
     for f in items:
         for r in f.references:
@@ -50,6 +51,10 @@ def _combine(items: list[Finding]) -> Finding:
                 }.values()
             ),
             "in_lockfile": any(f.in_lockfile for f in items),
+            # Fixed in source only if no source (e.g. OSV on the lockfile) still sees it there.
+            "fixed_in_source": all(f.fixed_in_source for f in items),
+            "in_kev": any(f.in_kev for f in items),
+            "epss": max(epss) if epss else None,
             "severity": severity,
             "cvss": max(scores) if scores else None,
             "references": list(refs),

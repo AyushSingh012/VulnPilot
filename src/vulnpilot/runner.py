@@ -99,6 +99,7 @@ def run_fix(
     host: PRHost | None = None,
     index: ReleaseIndex | None = None,
     today: date | None = None,
+    imports: list[Path] | None = None,
 ) -> FixOutcome:
     """Run the loop; then commit and open or update the PR (``push_pr``) or a local branch.
 
@@ -117,7 +118,7 @@ def run_fix(
         if not dry_run:
             host, state = _preflight(wt, cfg, push_pr, host)
         outcome = _fix_in_worktree(
-            wt, cfg, only, run_id, run_dir, env, started, dry_run, index, today
+            wt, cfg, only, run_id, run_dir, env, started, dry_run, index, today, imports or []
         )
         outcome.worktree_path = wt.path if keep_worktree else None
         outcome.ref = wt.ref
@@ -234,10 +235,13 @@ def _fix_in_worktree(
     dry_run: bool,
     index: ReleaseIndex | None,
     today: date | None,
+    imports: list[Path],
 ) -> FixOutcome:
     project = detect_project(wt.project_dir, base_branch=cfg.pr.base_branch)
     project.commit_sha = wt.commit_sha
-    before = scan_project(project, cfg, run_id, run_dir / "raw-before", only, today=today)
+    before = scan_project(
+        project, cfg, run_id, run_dir / "raw-before", only, today=today, imports=imports
+    )
     graph = load_graph(project)
     plan = build_plan(
         before.shown,
@@ -310,7 +314,9 @@ def _fix_in_worktree(
         raise FixError(f"files other than pyproject.toml and the lockfile changed: {unexpected}")
     outcome.changed = changed
 
-    after = scan_project(project, cfg, run_id, run_dir / "raw-after", only, today=today)
+    after = scan_project(
+        project, cfg, run_id, run_dir / "raw-after", only, today=today, imports=imports
+    )
     # An import finding whose lockfile version is now fixed is gone, as far as the PR goes.
     present = [f for f in after.findings if not f.fixed_in_source]
     present_keys = {f.key for f in present}
