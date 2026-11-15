@@ -1,6 +1,6 @@
 [project]
 name = "vulnpilot"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "Scan a Python project for vulnerable dependencies, upgrade them, test, rescan and open one PR."
 readme = "README.md"
 requires-python = ">=3.12"

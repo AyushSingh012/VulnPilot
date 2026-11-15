@@ -7,6 +7,7 @@ commit -> push -> open or update the PR (or, with --no-push, a local branch + bo
 
 from __future__ import annotations
 
+import shlex
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -45,7 +46,7 @@ from vulnpilot.plan import Plan, build_plan
 from vulnpilot.pr_body import BodyInput, render
 from vulnpilot.pypi import PyPIIndex, ReleaseIndex
 from vulnpilot.scanner import ScanResult, cache_dir, new_run_id, scan_project
-from vulnpilot.validate import Validator, tool_env
+from vulnpilot.validate import INSTALL_FAILED, Validator, tool_env
 from vulnpilot.worktree import Worktree, allowed_files, changed_files, worktree
 
 
@@ -276,6 +277,11 @@ def _fix_in_worktree(
     fixer.restore()
     baseline = validator.run("baseline")
     if not baseline.passed:
+        if baseline.failed_tests == [INSTALL_FAILED]:
+            raise FixError(
+                f"installing the project failed on {wt.ref} before any change "
+                f"(`{shlex.join(validator.install_cmd)}`). Log: {baseline.log_path}"
+            )
         what = ", ".join(baseline.failed_tests) or "tests failed"
         raise FixError(
             f"tests already fail on {wt.ref} before any change ({what}); "

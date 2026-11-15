@@ -25,6 +25,12 @@ def cache_dir() -> Path:
     return (Path(base) if base else Path.home() / ".cache") / "vulnpilot"
 
 
+def osv_db_dir() -> Path:
+    """Where the local OSV database lives (VULNPILOT_OSV_DB overrides; the tests share one)."""
+    override = os.environ.get("VULNPILOT_OSV_DB")
+    return Path(override) if override else cache_dir() / "osv-db"
+
+
 def new_run_id(now: datetime | None = None) -> str:
     stamp = (now or datetime.now(UTC)).strftime("%Y%m%dT%H%M%SZ")
     return f"{stamp}-{uuid.uuid4().hex[:6]}"
@@ -107,7 +113,8 @@ def scan_project(
     imports: list[Path] | None = None,
 ) -> ScanResult:
     """Collect, merge, annotate and filter findings for an already-detected project."""
-    osv = OsvSource(raw_dir, run=run)
+    offline_db = osv_db_dir() if cfg.osv_offline else None
+    osv = OsvSource(raw_dir, run=run, offline_db=offline_db)
     collected = osv.collect(project)
     warnings: list[str] = []
     imported_versions: dict[str, str] = {}

@@ -1,8 +1,16 @@
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
 
-from tests.conftest import ALL_FIXTURES, UV_FIXTURES, fake_osv_runner, fixture_spec, osv_data
+from tests.conftest import (
+    ALL_FIXTURES,
+    UV_FIXTURES,
+    fake_osv_runner,
+    fixture_dir,
+    fixture_spec,
+    osv_data,
+)
 from vulnpilot.detect import detect_project
 from vulnpilot.models import Severity
 from vulnpilot.proc import ProcResult
@@ -101,3 +109,24 @@ def test_scanner_error_is_reported(tmp_path: Path) -> None:
     source = OsvSource(tmp_path, run=lambda cmd: ProcResult(127, "", "boom\nreal reason"))
     with pytest.raises(SourceError, match=r"exit 127.*real reason"):
         source.collect(project)
+
+
+def test_offline_db_mode_sends_no_package_list(tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+    inner = fake_osv_runner("tests-break")
+
+    def recorder(cmd: Sequence[str]) -> ProcResult:
+        calls.append(list(cmd))
+        return inner(cmd)
+
+    project = detect_project(fixture_dir("tests-break"))
+    OsvSource(tmp_path, run=recorder, offline_db=tmp_path / "db").collect(project)
+    scan = next(c for c in calls if "scan" in c)
+    assert scan[:5] == [
+        "osv-scanner", "scan", "source", "--offline-vulnerabilities", "--download-offline-databases"
+    ]  # fmt: skip
+    OsvSource(tmp_path, run=recorder).collect(project)
+    assert (
+        "--offline-vulnerabilities" not in calls[-1]
+        and "--offline-vulnerabilities" not in calls[-2]
+    )

@@ -78,6 +78,9 @@ class Config(_Strict):
     """Fix findings at or above this. Unrated findings count as HIGH; KEV-listed or likely
     exploited (EPSS) findings are always included."""
     allow_major_upgrades: bool = False
+    osv_offline: bool = True
+    """Match the lockfile against a local copy of the OSV database (downloaded and kept
+    up to date in the cache) instead of sending package names and versions to osv.dev."""
     enrich: bool = True
     """Look up CISA KEV and FIRST EPSS for each CVE (only CVE IDs are sent)."""
     # "validate" would shadow BaseModel.validate, so the attribute has another name.

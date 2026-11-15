@@ -44,10 +44,17 @@ def fake_osv_runner(name: str, *, version: str = "2.7.1") -> Runner:
     return run
 
 
+@pytest.fixture(scope="session")
+def shared_osv_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """One local OSV database for the whole test run (36 MB; downloaded once)."""
+    return tmp_path_factory.mktemp("osv-db")
+
+
 @pytest.fixture(autouse=True)
-def isolated_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def isolated_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, shared_osv_db: Path) -> Path:
     """Keep raw scanner output out of the real ~/.cache during tests."""
     cache = tmp_path / "cache"
     monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
     monkeypatch.setenv("VULNPILOT_OFFLINE", "1")  # no KEV / EPSS lookups unless a test asks
+    monkeypatch.setenv("VULNPILOT_OSV_DB", str(shared_osv_db))
     return cache

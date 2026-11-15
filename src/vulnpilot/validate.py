@@ -15,6 +15,7 @@ from vulnpilot.proc import ToolNotFoundError, ToolTimeoutError
 
 _FAILED_RE = re.compile(r"^(?:FAILED|ERROR) (\S+)", re.MULTILINE)
 MAX_FAILED_NAMES = 20
+INSTALL_FAILED = "<install failed>"
 
 
 def tool_env(run_dir: Path) -> dict[str, str]:
@@ -88,7 +89,7 @@ class Validator:
             return ValidationResult(
                 ran=self.tests_enabled,
                 passed=False,
-                failed_tests=["<install failed>"],
+                failed_tests=[INSTALL_FAILED],
                 log_path=str(log),
             )
         if self.test_cmd is None:

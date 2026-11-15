@@ -15,6 +15,7 @@ from vulnpilot.detect import DetectError
 from vulnpilot.fixers.base import LockError
 from vulnpilot.git_ops import GitError
 from vulnpilot.github import GitHubError
+from vulnpilot.hints import hint_for
 from vulnpilot.models import ExitCode, Severity
 from vulnpilot.report.console import render_fix, render_scan
 from vulnpilot.report.json_out import write_scan_json
@@ -100,8 +101,11 @@ def doctor_cmd(path: PathArg = Path()) -> None:
         raise typer.Exit(ExitCode.ERROR)
 
 
-def _fail(message: str) -> NoReturn:
-    err_console.print(f"[red]Error:[/red] {message}")
+def _fail(message: str | Exception) -> NoReturn:
+    err_console.print(f"[red]Error:[/red] {message}", highlight=False)
+    hint = hint_for(message) if isinstance(message, Exception) else None
+    if hint:
+        err_console.print(f"[yellow]Fix:[/yellow] {hint}", highlight=False)
     raise typer.Exit(ExitCode.ERROR)
 
 
@@ -109,8 +113,7 @@ def _load_config_or_exit(path: Path) -> Config:
     try:
         return load_config(path)
     except ConfigError as exc:
-        err_console.print(f"[red]Config error:[/red] {exc}")
-        raise typer.Exit(ExitCode.ERROR) from exc
+        _fail(exc)
 
 
 def lockfile_uri(lockfile: Path) -> str:
@@ -170,7 +173,7 @@ def scan_cmd(
     try:
         result = run_scan(path, cfg, only, imports=resolve_imports(path, cfg, imports))
     except (DetectError, SourceError) as exc:
-        _fail(str(exc))
+        _fail(exc)
     render_scan(result, console)
     if json_out is not None:
         write_scan_json(result, json_out)
@@ -228,7 +231,7 @@ def fix_cmd(
         GitError,
         GitHubError,
     ) as exc:
-        _fail(str(exc))
+        _fail(exc)
     render_fix(outcome, console)
     report = outcome.report
     if report is not None and json_out is not None:

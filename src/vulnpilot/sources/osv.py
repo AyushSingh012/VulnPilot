@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -189,14 +190,22 @@ def parse_osv_json(data: dict[str, Any], tool_version: str | None = None) -> lis
 class OsvSource:
     name = "osv"
 
-    def __init__(self, raw_dir: Path, run: Runner | None = None) -> None:
+    def __init__(
+        self, raw_dir: Path, run: Runner | None = None, offline_db: Path | None = None
+    ) -> None:
+        """``offline_db``: match against a local copy of the OSV database kept there, so no
+        package names or versions are sent anywhere (only the database is downloaded)."""
         self.raw_dir = raw_dir
         self._run = run
+        self.offline_db = offline_db
 
     def _exec(self, cmd: list[str], cwd: Path | None = None) -> proc.ProcResult:
         if self._run is not None:
             return self._run(cmd)
-        return proc.run(cmd, cwd=cwd, timeout=SCAN_TIMEOUT_S)
+        env = None
+        if self.offline_db is not None:
+            env = {**os.environ, "OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY": str(self.offline_db)}
+        return proc.run(cmd, cwd=cwd, timeout=SCAN_TIMEOUT_S, env=env)
 
     def tool_version(self) -> str | None:
         try:
@@ -207,6 +216,8 @@ class OsvSource:
 
     def collect(self, project: Project) -> list[Finding]:
         cmd = [TOOL, "scan", "source", "-L", str(project.lockfile), "--format", "json"]
+        if self.offline_db is not None:
+            cmd[3:3] = ["--offline-vulnerabilities", "--download-offline-databases"]
         try:
             result = self._exec(cmd, cwd=project.root)
         except ToolNotFoundError as exc:
