@@ -1,0 +1,15 @@
+description: Two upgrades; the jinja2 one breaks a test and must be isolated and dropped.
+manager: uv
+seed:
+  requests: 2.31.0
+  jinja2: 3.1.2
+expected:
+  scan:
+    - {package: requests, installed: 2.31.0, advisory: CVE-2024-35195}
+    - {package: jinja2, installed: 3.1.2, advisory: CVE-2024-22195}
+  fix:
+    exit_code: 1
+    changed_files: [uv.lock]
+    results:
+      - {package: requests, status: FIXED_AND_VALIDATED, method: lock-upgrade, min_to_version: 2.32.4}
+      - {package: jinja2, status: FIXED_BUT_TESTS_FAILED, note_contains: test_jinja2_is_exactly_312}

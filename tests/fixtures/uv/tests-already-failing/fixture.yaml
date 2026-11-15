@@ -1,0 +1,12 @@
+description: Tests fail before any upgrade; VulnPilot must stop instead of blaming upgrades.
+manager: uv
+seed:
+  requests: 2.31.0
+expected:
+  scan:
+    - {package: requests, installed: 2.31.0, advisory: CVE-2024-35195}
+  fix:
+    exit_code: 2
+    changed_files: []
+    error_contains: already fail
+    results: []

@@ -1,0 +1,9 @@
+[project]
+name = "capped-parent"
+version = "1.0.0"
+requires-python = ">=3.12"
+dependencies = ["jinja2>=3.1,<3.1.3"]
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
