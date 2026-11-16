@@ -6,6 +6,7 @@ import shutil
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
 
 from vulnpilot import proc
@@ -58,6 +59,39 @@ def _base_ref(repo: Path, base_branch: str) -> str:
     return base_branch
 
 
+STALE_AFTER = timedelta(hours=6)
+
+
+def prune_stale(repo: Path, runs_root: Path, now: datetime | None = None) -> list[Path]:
+    """Remove worktrees an interrupted VulnPilot run left behind in ``repo``.
+
+    Only worktrees inside VulnPilot's own runs folder, from runs older than STALE_AFTER
+    (the run id starts with its UTC start time), are touched.
+    """
+    now = now or datetime.now(UTC)
+    listing = git(["worktree", "list", "--porcelain"], repo)
+    if not listing.ok:
+        return []
+    removed = []
+    root = runs_root.resolve()
+    for line in listing.stdout.splitlines():
+        if not line.startswith("worktree "):
+            continue
+        path = Path(line.removeprefix("worktree ")).resolve()
+        if root not in path.parents:
+            continue
+        run_id = path.relative_to(root).parts[0]
+        try:
+            started = datetime.strptime(run_id[:16], "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)
+        except ValueError:
+            continue
+        if now - started >= STALE_AFTER:
+            git(["worktree", "remove", "--force", str(path)], repo)
+            removed.append(path)
+    git(["worktree", "prune"], repo)
+    return removed
+
+
 @contextmanager
 def worktree(
     project_root: Path, base_branch: str, dest: Path, keep: bool = False
@@ -68,6 +102,7 @@ def worktree(
     repo = Path(top.stdout.strip()).resolve()
     rel = project_root.resolve().relative_to(repo)
     ref = _base_ref(repo, base_branch)
+    prune_stale(repo, dest.parent.parent)
     dest.parent.mkdir(parents=True, exist_ok=True)
     _must(
         git(["worktree", "add", "--detach", "--quiet", str(dest), ref], repo),

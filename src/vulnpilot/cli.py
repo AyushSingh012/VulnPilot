@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import signal
 from pathlib import Path
 from typing import Annotated, NoReturn
 
@@ -84,6 +85,13 @@ def main(
     ] = False,
 ) -> None:
     """VulnPilot v1."""
+    # A kill (SIGTERM) unwinds like Ctrl+C, so the temporary worktree is removed and a
+    # running install or test command is stopped with it.
+    signal.signal(signal.SIGTERM, _exit_on_sigterm)
+
+
+def _exit_on_sigterm(signum: int, frame: object) -> NoReturn:
+    raise SystemExit(128 + signum)
 
 
 @app.command("doctor")
