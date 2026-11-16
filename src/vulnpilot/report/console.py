@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from collections import Counter
 
-from packaging.version import InvalidVersion, Version
 from rich.console import Console
 from rich.table import Table
 
 from vulnpilot.models import Finding, FixStatus, Severity
 from vulnpilot.runner import FixOutcome
 from vulnpilot.scanner import ScanResult
+from vulnpilot.versions import is_major_upgrade
 
 _STYLE = {
     Severity.CRITICAL: "bold red",
@@ -21,19 +21,11 @@ _STYLE = {
 }
 
 
-def _major(v: str) -> int | None:
-    try:
-        return Version(v).major
-    except InvalidVersion:
-        return None
-
-
 def fix_label(f: Finding) -> str:
     if not f.fixed_versions:
         return "none"
     target = f.fixed_versions[0]
-    cur, new = _major(f.installed_version), _major(target)
-    if cur is not None and new is not None and new > cur:
+    if is_major_upgrade(f.installed_version, target):
         return f"{target} (major)"
     return target
 

@@ -21,6 +21,21 @@ def major(text: str) -> int | None:
     return v.major if v else None
 
 
+_CALVER_FIRST_YEAR = 1990
+
+
+def is_major_upgrade(current: str, candidate: str) -> bool:
+    """Does going from ``current`` to ``candidate`` cross a major version?
+
+    Calendar-versioned packages (certifi 2025.11.12 -> 2026.10.18, pytz, tzdata) put the
+    year first; a new year is a routine release there, not a breaking one.
+    """
+    a, b = major(current), major(candidate)
+    if a is None or b is None or a == b:
+        return False
+    return not (a >= _CALVER_FIRST_YEAR and b >= _CALVER_FIRST_YEAR)
+
+
 def sort_versions(versions: Iterable[str]) -> list[str]:
     parsed = [(pv, v) for v in set(versions) if (pv := parse(v)) is not None]
     return [v for _, v in sorted(parsed)]

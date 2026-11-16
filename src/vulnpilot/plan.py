@@ -21,7 +21,7 @@ from vulnpilot.lockgraph import LockGraph
 from vulnpilot.models import Finding, Upgrade, normalize_package
 from vulnpilot.pypi import ReleaseIndex
 from vulnpilot.specifiers import allows
-from vulnpilot.versions import is_affected, major, parse, sort_versions
+from vulnpilot.versions import is_affected, is_major_upgrade, parse, sort_versions
 
 
 @dataclass
@@ -75,8 +75,7 @@ def choose_target(
     installed: str, findings: list[Finding], cands: list[str], allow_major: bool
 ) -> tuple[str | None, list[Finding], dict[str, str]]:
     """Return (target, fixed findings, {unfixed key: reason})."""
-    cur_major = major(installed)
-    allowed = [c for c in cands if allow_major or major(c) == cur_major]
+    allowed = [c for c in cands if allow_major or not is_major_upgrade(installed, c)]
 
     def fixed_by(c: str) -> list[Finding]:
         return [f for f in findings if not is_affected(c, f)]
@@ -97,7 +96,7 @@ def choose_target(
         if f.key in fixed_keys:
             continue
         anywhere = next((c for c in cands if not is_affected(c, f)), None)
-        if anywhere is not None and not allow_major and major(anywhere) != cur_major:
+        if anywhere is not None and not allow_major and is_major_upgrade(installed, anywhere):
             reasons[f.key] = f"needs a major upgrade (fixed in {anywhere}); majors are not allowed"
         elif anywhere is not None:
             reasons[f.key] = f"fixed in {anywhere}, but no single version fixes it with the rest"
@@ -118,7 +117,7 @@ def ride_along(
         return target, []
     tv = parse(target)
     same_major = [
-        c for c in cands if major(c) == major(target) and (p := parse(c)) and tv and p >= tv
+        c for c in cands if not is_major_upgrade(target, c) and (p := parse(c)) and tv and p >= tv
     ]
     for c in same_major:
         if all(not is_affected(c, f) for f in [*fixed, *extras]):

@@ -8,7 +8,7 @@ from vulnpilot.plan import build_plan, candidates, choose_target, ride_along
 from vulnpilot.pypi import StaticIndex, usable_releases
 from vulnpilot.sources.merge import annotate, merge_findings
 from vulnpilot.sources.osv import parse_osv_json
-from vulnpilot.versions import bump_at, is_affected
+from vulnpilot.versions import bump_at, is_affected, is_major_upgrade
 
 
 def adv(cve: str, *ranges: tuple[str, str | None]) -> Finding:
@@ -129,3 +129,16 @@ def test_riders_never_change_the_in_scope_fix() -> None:
     _, fixed, _ = choose_target("1.4.0", [B], RELEASES[1:], allow_major=False)
     target, riding = ride_along("1.5.0", fixed, [A, C], RELEASES[1:])
     assert target == "1.5.0" and [f.advisory_id for f in riding] == ["CVE-A"]
+
+
+def test_calendar_versions_are_not_majors() -> None:
+    assert not is_major_upgrade("2025.11.12", "2026.10.18")  # certifi
+    assert not is_major_upgrade("2024.1", "2025.2")  # pytz / tzdata
+    assert is_major_upgrade("0.50.0", "1.0.1")  # starlette
+    assert is_major_upgrade("12.3.0", "13.0.0")
+    assert not is_major_upgrade("2.31.0", "2.33.0")
+    certifi = adv("CVE-CERT", ("0", "2026.10.18"))
+    target, _, reasons = choose_target(
+        "2025.11.12", [certifi], ["2026.1.1", "2026.10.18"], allow_major=False
+    )
+    assert target == "2026.10.18" and reasons == {}
